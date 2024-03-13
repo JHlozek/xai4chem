@@ -1,15 +1,16 @@
 import optuna
 from xgboost import XGBRegressor
-from catboost import CatBoostRegressor
-from sklearn.model_selection import KFold
-from sklearn.metrics import mean_squared_error
-from sklearn import model_selection, metrics
+from catboost import CatBoostRegressor 
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
 import shap
 import joblib
+import numpy as np
 
 class Regressor:
-    def __init__(self, selected_algorithm='xgboost'):
-        self.selected_algorithm = selected_algorithm
+    def __init__(self, algorithm='xgboost', n_trials=200):
+        self.algorithm = algorithm
+        self.n_trials = n_trials
         self.model = None 
 
     def _optimize_xgboost(self, trial, X, y):
@@ -25,19 +26,20 @@ class Regressor:
             'min_child_weight': trial.suggest_int('min_child_weight', 8, 600),  
             'max_depth': trial.suggest_categorical('max_depth', [3, 4, 5, 6, 7]),  
             'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-            'random_state': 42
+            'random_state': 42,
+            'early_stopping_rounds': 10
         }
 
 
         model = XGBRegressor(**params)
-        X_train, X_valid, y_train, y_valid = model_selection.train_test_split(
+        X_train, X_valid, y_train, y_valid = train_test_split(
             X, 
             y, 
             test_size=0.2, 
             random_state=42
         ) 
 
-        model.fit(X_train,y_train,eval_set=[(X_valid,y_valid)],early_stopping_rounds=20,verbose=False)
+        model.fit(X_train,y_train,eval_set=[(X_valid,y_valid)],verbose=False)
         
         preds = model.predict(X_valid)
         r2 = metrics.r2_score(y_valid, preds)
@@ -58,7 +60,7 @@ class Regressor:
         }
 
         model = CatBoostRegressor( loss_function="RMSE",random_state=42,**params)
-        X_train, X_valid, y_train, y_valid = model_selection.train_test_split(
+        X_train, X_valid, y_train, y_valid = train_test_split(
             X, 
             y, 
             test_size=0.2, 
@@ -75,23 +77,41 @@ class Regressor:
         return metrics.mean_squared_error(y_valid, yhat) 
 
     def train(self, X_train, y_train):
-        if self.selected_algorithm == 'xgboost':
+        if self.algorithm == 'xgboost':
             study = optuna.create_study(direction="maximize")
-            study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=50,  timeout=600)
+            study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials,  timeout=600)
             best_params = study.best_params
             print('Best parameters for XGBoost:', best_params)
             self.model = XGBRegressor(**best_params)
             self.model.fit(X_train, y_train)
-        elif self.selected_algorithm == 'catboost': 
+        elif self.algorithm == 'catboost': 
             study = optuna.create_study(direction="minimize") 
-            study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=50,  timeout=600)
+            study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials,  timeout=600)
             best_params = study.best_params
             print('Best parameters for CatBoost:', best_params)
             self.model = CatBoostRegressor(**best_params)
             self.model.fit(X_train, y_train, verbose=False)
         else:
-            raise ValueError("Invalid Algorithm. Supported Algoriths: 'xgboost', 'catboost'")
+            raise ValueError("Invalid Algorithm. Supported Algorithms: 'xgboost', 'catboost'")
 
+    def evaluate(self, X_valid, y_valid):
+        if self.model is None:
+            raise ValueError("The model has not been trained.")
+
+        y_pred = self.model.predict(X_valid)
+        mse = metrics.mean_squared_error(y_valid, y_pred)            
+        rmse = np.sqrt(mse) 
+        mae = metrics.mean_absolute_error(y_valid, y_pred)
+        r2 = metrics.r2_score(y_valid, y_pred)
+        explained_variance = metrics.explained_variance_score(y_valid, y_pred)
+        
+        print("Mean Squared Error:", round(mse, 4))    
+        print("Root Mean Squared Error:", round(rmse, 4))
+        print("Mean Absolute Error:", round(mae, 4))
+        print("R-squared Score:", round(r2, 4))
+        print("Explained Variance Score:", round(explained_variance,4)) 
+        return mse, rmse, mae, r2, explained_variance
+    
     def predict(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.")
@@ -101,8 +121,8 @@ class Regressor:
         if self.model is None:
             raise ValueError("The model has not been trained.")
         explainer = shap.Explainer(self.model)
-        shap_values = explainer.shap_values(X)
-        return shap_values
+        explanation = explainer(X)
+        return explanation
 
     def save_model(self, filename):
         if self.model is None:
