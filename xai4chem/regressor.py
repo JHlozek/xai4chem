@@ -5,7 +5,9 @@ from sklearn import metrics
 from sklearn.model_selection import train_test_split
 import shap
 import joblib
+import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 class Regressor:
     def __init__(self, algorithm='xgboost', n_trials=200):
@@ -73,8 +75,8 @@ class Regressor:
             verbose=False
         )
 
-        yhat = model.predict(X_valid)
-        return metrics.mean_squared_error(y_valid, yhat) 
+        y_pred = model.predict(X_valid)
+        return metrics.mean_squared_error(y_valid, y_pred) 
 
     def train(self, X_train, y_train):
         if self.algorithm == 'xgboost':
@@ -94,11 +96,21 @@ class Regressor:
         else:
             raise ValueError("Invalid Algorithm. Supported Algorithms: 'xgboost', 'catboost'")
 
-    def evaluate(self, X_valid, y_valid):
+    def evaluate(self, X_valid, y_valid, output_folder):
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
         y_pred = self.model.predict(X_valid)
+        joblib.dump((X_valid, y_valid, y_pred), os.path.join(output_folder, "evaluation_data.joblib"))
+        
+        plt.scatter(y_valid, y_pred) 
+        plt.xlabel('True Values')
+        plt.ylabel('Predictions')
+        plt.title('True vs. Predicted Values')
+        plt.savefig(os.path.join(output_folder, 'evaluation_scatter_plot.png'))
+        plt.close()
+        
+        # Metrics
         mse = metrics.mean_squared_error(y_valid, y_pred)            
         rmse = np.sqrt(mse) 
         mae = metrics.mean_absolute_error(y_valid, y_pred)
@@ -110,6 +122,14 @@ class Regressor:
         print("Mean Absolute Error:", round(mae, 4))
         print("R-squared Score:", round(r2, 4))
         print("Explained Variance Score:", round(explained_variance,4)) 
+        
+        with open(os.path.join(output_folder, 'evaluation_metrics.txt'), 'w') as f:
+            f.write("Mean Squared Error: {}\n".format(round(mse, 4)))
+            f.write("Root Mean Squared Error: {}\n".format(round(rmse, 4)))
+            f.write("Mean Absolute Error: {}\n".format(round(mae, 4)))
+            f.write("R-squared Score: {}\n".format(round(r2, 4)))
+            f.write("Explained Variance Score: {}\n".format(round(explained_variance,4)))
+            
         return mse, rmse, mae, r2, explained_variance
     
     def predict(self, X):
@@ -117,11 +137,33 @@ class Regressor:
             raise ValueError("The model has not been trained.")
         return self.model.predict(X)
 
-    def explain(self, X):
+    def explain(self, X, feature_names, output_folder):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         explainer = shap.Explainer(self.model)
         explanation = explainer(X)
+        
+        new_explanation = shap.Explanation(
+        values=explanation.values, 
+        base_values=explanation.base_values, 
+        data=explanation.data, 
+        feature_names=feature_names
+        )
+        #waterfall plot
+        waterfall_plot = shap.plots.waterfall(new_explanation[0], max_display=15, show=False)
+        waterfall_plot.figure.savefig(os.path.join(output_folder, "interpretability_sample1.png"),  bbox_inches='tight') 
+        plt.close(waterfall_plot.figure)
+        
+        #summary plot 
+        summary_plot = shap.plots.bar(new_explanation, max_display=20,  show=False)
+        summary_plot.figure.savefig(os.path.join(output_folder, "interpretability_bar_plot.png"), bbox_inches='tight') 
+        plt.close(summary_plot.figure)
+        
+        #beeswarm plot
+        beeswarm_plot = shap.plots.beeswarm(new_explanation,max_display=15, show=False)
+        beeswarm_plot.figure.savefig(os.path.join(output_folder, "interpretability_beeswarm_plot.png"), bbox_inches='tight') 
+        plt.close(beeswarm_plot.figure)
+        
         return explanation
 
     def save_model(self, filename):
