@@ -8,6 +8,8 @@ import joblib
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import json
+
 
 class Regressor:
     def __init__(self, algorithm='xgboost', n_trials=200):
@@ -117,20 +119,18 @@ class Regressor:
         r2 = metrics.r2_score(y_valid, y_pred)
         explained_variance = metrics.explained_variance_score(y_valid, y_pred)
         
-        print("Mean Squared Error:", round(mse, 4))    
-        print("Root Mean Squared Error:", round(rmse, 4))
-        print("Mean Absolute Error:", round(mae, 4))
-        print("R-squared Score:", round(r2, 4))
-        print("Explained Variance Score:", round(explained_variance,4)) 
+        evaluation_metrics = {
+            "Mean Squared Error": round(mse, 4),
+            "Root Mean Squared Error": round(rmse, 4),
+            "Mean Absolute Error": round(mae, 4),
+            "R-squared Score": round(r2, 4),
+            "Explained Variance Score": round(explained_variance, 4)
+        } 
         
-        with open(os.path.join(output_folder, 'evaluation_metrics.txt'), 'w') as f:
-            f.write("Mean Squared Error: {}\n".format(round(mse, 4)))
-            f.write("Root Mean Squared Error: {}\n".format(round(rmse, 4)))
-            f.write("Mean Absolute Error: {}\n".format(round(mae, 4)))
-            f.write("R-squared Score: {}\n".format(round(r2, 4)))
-            f.write("Explained Variance Score: {}\n".format(round(explained_variance,4)))
+        with open(os.path.join(output_folder, 'evaluation_metrics.json'), 'w') as f:
+            json.dump(evaluation_metrics, f, indent=4)
             
-        return mse, rmse, mae, r2, explained_variance
+        return evaluation_metrics
     
     def predict(self, X):
         if self.model is None:
