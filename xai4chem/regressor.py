@@ -12,25 +12,25 @@ import json
 
 
 class Regressor:
-    def __init__(self, algorithm='xgboost', n_trials=200):
+    def __init__(self, algorithm='xgboost', n_trials=200, timeout=600):
         self.algorithm = algorithm
         self.n_trials = n_trials
+        self.timeout = timeout
         self.model = None 
 
     def _optimize_xgboost(self, trial, X, y):
         params = {  
-            'lambda': trial.suggest_float('lambda', 7.0, 17.0),
-            'alpha': trial.suggest_float('alpha', 7.0, 17.0),
-            'eta': trial.suggest_float('eta', 0.3,1.0),
-            'gamma': trial.suggest_int('gamma', 18,25),
-            'learning_rate': trial.suggest_float('learning_rate', 0.0001,0.1),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.3, 1.0),
-            'colsample_bynode': trial.suggest_float('colsample_bynode', 0.3, 1.0),
-            'n_estimators': trial.suggest_int('n_estimators', 400, 1000),
-            'min_child_weight': trial.suggest_int('min_child_weight', 8, 600),  
-            'max_depth': trial.suggest_categorical('max_depth', [3, 4, 5, 6, 7]),  
-            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-            'random_state': 42,
+            'lambda': trial.suggest_int('lambda', 0, 5),
+            'alpha': trial.suggest_int('alpha', 0, 5), 
+            'gamma': trial.suggest_int('gamma', 0,20),
+            'learning_rate': trial.suggest_float('learning_rate', 0.0001,1),
+            'colsample_bytree': trial.suggest_categorical('colsample_bytree',[0.4,0.5,0.6,0.7,0.8,1.0]),
+            'colsample_bynode': trial.suggest_categorical('colsample_bynode',[0.4,0.5,0.6,0.7,0.8,1.0]),
+            'n_estimators': trial.suggest_int('n_estimators', 50, 200),
+            'min_child_weight': trial.suggest_int('min_child_weight',1, 100),  
+            'max_depth': trial.suggest_int('max_depth', 3, 20),  
+            'subsample': trial.suggest_categorical('subsample', [0.4,0.5,0.6,0.7,0.8,1.0]),
+            'random_state': trial.suggest_categorical('random_state', [0, 42]),
             'early_stopping_rounds': 10
         }
 
@@ -52,15 +52,14 @@ class Regressor:
 
     def _optimize_catboost(self, trial, X, y):
         params = {
-            'iterations':trial.suggest_int("iterations", 5000, 20000),
-            'od_wait':trial.suggest_int('od_wait', 1000, 2000),
-            'learning_rate' : trial.suggest_float('learning_rate',0.00001,0.1),
-            'reg_lambda': trial.suggest_float('reg_lambda',1e-5,100),
+            'iterations':trial.suggest_int("iterations", 500, 2000),
+            'learning_rate' : trial.suggest_float('learning_rate',0.0001,1),
+            'reg_lambda': trial.suggest_float('reg_lambda',1, 10),
             'subsample': trial.suggest_categorical('subsample', [0.4,0.5,0.6,0.7,0.8,1.0]),
-            'random_strength': trial.suggest_float('random_strength',10,50),
-            'depth': trial.suggest_int('depth',1, 15),
-            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf',1,20),
-            'leaf_estimation_iterations': trial.suggest_int('leaf_estimation_iterations',1,15),
+            'random_strength': trial.suggest_float('random_strength',1,10),
+            'depth': trial.suggest_int('depth',5, 10),
+            'leaf_estimation_iterations': trial.suggest_int('leaf_estimation_iterations',5,10),
+            'early_stopping_rounds': 10
         }
 
         model = CatBoostRegressor( loss_function="RMSE",random_state=42,**params)
@@ -80,20 +79,26 @@ class Regressor:
         y_pred = model.predict(X_valid)
         return metrics.mean_squared_error(y_valid, y_pred) 
 
-    def train(self, X_train, y_train):
+    def train(self, X_train, y_train, default_params=True):
         if self.algorithm == 'xgboost':
-            study = optuna.create_study(direction="maximize")
-            study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials,  timeout=600)
-            best_params = study.best_params
-            print('Best parameters for XGBoost:', best_params)
-            self.model = XGBRegressor(**best_params)
+            if not default_params:
+                study = optuna.create_study(direction="maximize")
+                study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials, timeout=self.timeout)
+                best_params = study.best_params
+                print('Best parameters for XGBoost:', best_params)
+                self.model = XGBRegressor(**best_params)
+            else:
+                self.model = XGBRegressor()
             self.model.fit(X_train, y_train)
         elif self.algorithm == 'catboost': 
-            study = optuna.create_study(direction="minimize") 
-            study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials,  timeout=600)
-            best_params = study.best_params
-            print('Best parameters for CatBoost:', best_params)
-            self.model = CatBoostRegressor(**best_params)
+            if not default_params:
+                study = optuna.create_study(direction="minimize") 
+                study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials, timeout=self.timeout)
+                best_params = study.best_params
+                print('Best parameters for CatBoost:', best_params)
+                self.model = CatBoostRegressor(**best_params)
+            else:
+                self.model = CatBoostRegressor()
             self.model.fit(X_train, y_train, verbose=False)
         else:
             raise ValueError("Invalid Algorithm. Supported Algorithms: 'xgboost', 'catboost'")
