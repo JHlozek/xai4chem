@@ -9,6 +9,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="xai4chem",
+    version="0.0.1",
     author="Hellen Namulinda",
     author_email="hellennamulinda@gmail.com",
     description="Explainable AI for Chemistry", 
