@@ -20,7 +20,7 @@ if __name__ == "__main__":
     
     # Extract SMILES and target values
     smiles = data["smiles"]
-    target = data["uM_value"] #uM_value or pchembl_value
+    target = data["pchembl_value"]
 
     # Split data into training and test sets
     smiles_train, smiles_valid, y_train, y_valid = train_test_split(smiles, target, test_size=0.2, random_state=42)
@@ -35,11 +35,11 @@ if __name__ == "__main__":
     smiles_train = descriptor.transform(smiles_train)
      
     # Instantiate the regressor
-    regressor = Regressor(algorithm='xgboost') 
-
+    regressor = Regressor(algorithm='xgboost', n_trials=500) 
     # Train the model 
-    regressor.train(smiles_train, y_train)
-
+    regressor.train(smiles_train, y_train, default_params=False)
+    regressor.save_model(os.path.join(root, "..", "results", 'xgboost_1.joblib'))
+    
      #Evaluate model
     # Transform    
     smiles_valid = descriptor.transform(smiles_valid)
