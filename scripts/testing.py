@@ -1,9 +1,7 @@
 import os
 import pandas as pd  
 import sys
-from sklearn.model_selection import train_test_split
-import shap
-import matplotlib.pyplot as plt 
+from sklearn.model_selection import train_test_split 
 
 
 root = os.path.dirname(os.path.abspath(__file__))  
@@ -25,9 +23,9 @@ if __name__ == "__main__":
     # Split data into training and test sets
     smiles_train, smiles_valid, y_train, y_valid = train_test_split(smiles, target, test_size=0.2, random_state=42)
     
-        
+   
     # Instantiate the descriptor class 
-    descriptor = DatamolDescriptor(discretize=False)
+    descriptor = DatamolDescriptor()
 
     descriptor.fit(smiles_train)
     
@@ -35,19 +33,15 @@ if __name__ == "__main__":
     smiles_train = descriptor.transform(smiles_train)
      
     # Instantiate the regressor
-    regressor = Regressor(algorithm='xgboost', n_trials=500) 
+    regressor = Regressor(output_folder, algorithm='xgboost') 
     # Train the model 
-    regressor.train(smiles_train, y_train, default_params=False)
+    regressor.fit(smiles_train, y_train, default_params=False)
     regressor.save_model(os.path.join(root, "..", "results", 'xgboost_1.joblib'))
     
-     #Evaluate model
-    # Transform    
+    #Evaluate model
+    # Transform smiles  
     smiles_valid = descriptor.transform(smiles_valid)
-    
-    regressor.evaluate(smiles_valid, y_valid, output_folder) 
+    regressor.evaluate(smiles_valid, y_valid) 
 
-    # Explain the model
-    # Feature names
-    feature_names = descriptor.feature_names
-    
-    regressor.explain(smiles_train, feature_names, output_folder)  
+    # Explain the model     
+    regressor.explain(smiles_train)  
