@@ -68,27 +68,7 @@ class VarianceFilter:
     def load(cls, file_name):
         return joblib.load(file_name)
     
-
-class Scaler(object):
-    def __init__(self):
-        self._name = "scaler"
-        self.abs_limit = 10 
-
-    def fit(self, X): 
-        self.scaler = RobustScaler() 
-        self.scaler.fit_transform(X) 
-
-    def transform(self, X): 
-        X = self.scaler.transform(X) 
-        return np.clip(X, -self.abs_limit, self.abs_limit)
-    
-    def save(self, file_name):
-        joblib.dump(self, file_name)
-
-    @classmethod
-    def load(cls, file_name):
-        return joblib.load(file_name)
-
+ 
 def datamol_featurizer(smiles_list):
     R = []
     for smiles in tqdm(smiles_list):
@@ -97,8 +77,9 @@ def datamol_featurizer(smiles_list):
         R.append(descriptors)
     return pd.DataFrame(R)
 
+
 class DatamolDescriptor:
-    def __init__(self, max_na=0.1, use_scaling=False, discretize=True,n_bins=5, kbd_strategy='quantile'):
+    def __init__(self, max_na=0.1, discretize=True,n_bins=5, kbd_strategy='quantile'):
         """
         Parameters:
         - max_na: float, optional (default=0.1)
@@ -113,11 +94,9 @@ class DatamolDescriptor:
         """
         self.nan_filter = NanFilter(max_na=max_na)
         self.imputer = Imputer()
-        self.variance_filter = VarianceFilter()
-        self.scaler = Scaler()  
+        self.variance_filter = VarianceFilter() 
         self.discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy=kbd_strategy)
         self.discretize = discretize
-        self.use_scaling = use_scaling
 
     def fit(self, smiles):
         df = datamol_featurizer(smiles) 
@@ -129,10 +108,7 @@ class DatamolDescriptor:
         self.variance_filter.fit(X)
         X = self.variance_filter.transform(X)
         if self.discretize:
-            self.discretizer.fit(X)
-        if self.use_scaling:
-            self.scaler.fit(X)
-            X = self.scaler.transform(X)
+            self.discretizer.fit(X) 
         col_idxs = self.variance_filter.col_idxs
         feature_names = list(df.columns)
         self.feature_names = [feature_names[i] for i in col_idxs]
@@ -144,11 +120,10 @@ class DatamolDescriptor:
         X = self.imputer.transform(X)
         X = self.variance_filter.transform(X)
         if self.discretize:
-            X = self.discretizer.transform(X)
-        if self.use_scaling:
-            X = self.scaler.transform(X)
-        return np.array(X, dtype=int)
-
+            X = self.discretizer.transform(X) 
+        X = X.astype(int)
+        return pd.DataFrame(X, columns=self.feature_names)
+    
     def save(self, file_name):
         joblib.dump(self, file_name)
         

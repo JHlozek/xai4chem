@@ -12,10 +12,10 @@ import json
 
 
 class Regressor:
-    def __init__(self, algorithm='xgboost', n_trials=200, timeout=600):
+    def __init__(self, output_folder, algorithm='xgboost', n_trials=200):
         self.algorithm = algorithm
         self.n_trials = n_trials
-        self.timeout = timeout
+        self.output_folder = output_folder
         self.model = None 
 
     def _optimize_xgboost(self, trial, X, y):
@@ -46,9 +46,9 @@ class Regressor:
         model.fit(X_train,y_train,eval_set=[(X_valid,y_valid)],verbose=False)
         
         preds = model.predict(X_valid)
-        r2 = metrics.r2_score(y_valid, preds)
+        mae = metrics.mean_absolute_error(y_valid, preds)
         
-        return r2
+        return mae
 
     def _optimize_catboost(self, trial, X, y):
         params = {
@@ -69,21 +69,17 @@ class Regressor:
             test_size=0.2, 
             random_state=42
         ) 
+        model.fit(X_train,y_train,eval_set=[(X_valid,y_valid)],verbose=False)
+        
+        preds = model.predict(X_valid)
+        mae = metrics.mean_absolute_error(y_valid, preds)
+        return mae
 
-        model.fit(X_train, y_train,
-            early_stopping_rounds=10,
-            eval_set=[(X_valid, y_valid)], 
-            verbose=False
-        )
-
-        y_pred = model.predict(X_valid)
-        return metrics.mean_squared_error(y_valid, y_pred) 
-
-    def train(self, X_train, y_train, default_params=True):
+    def fit(self, X_train, y_train, default_params=True):
         if self.algorithm == 'xgboost':
             if not default_params:
-                study = optuna.create_study(direction="maximize")
-                study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials, timeout=self.timeout)
+                study = optuna.create_study(direction="minimize")
+                study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials)
                 best_params = study.best_params
                 print('Best parameters for XGBoost:', best_params)
                 self.model = XGBRegressor(**best_params)
@@ -93,7 +89,7 @@ class Regressor:
         elif self.algorithm == 'catboost': 
             if not default_params:
                 study = optuna.create_study(direction="minimize") 
-                study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials, timeout=self.timeout)
+                study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials)
                 best_params = study.best_params
                 print('Best parameters for CatBoost:', best_params)
                 self.model = CatBoostRegressor(**best_params)
@@ -103,18 +99,18 @@ class Regressor:
         else:
             raise ValueError("Invalid Algorithm. Supported Algorithms: 'xgboost', 'catboost'")
 
-    def evaluate(self, X_valid, y_valid, output_folder):
+    def evaluate(self, X_valid, y_valid):
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
         y_pred = self.model.predict(X_valid)
-        joblib.dump((X_valid, y_valid, y_pred), os.path.join(output_folder, "evaluation_data.joblib"))
+        joblib.dump((X_valid, y_valid, y_pred), os.path.join(self.output_folder, "evaluation_data.joblib"))
         
         plt.scatter(y_valid, y_pred) 
         plt.xlabel('True Values')
         plt.ylabel('Predictions')
         plt.title('True vs. Predicted Values')
-        plt.savefig(os.path.join(output_folder, 'evaluation_scatter_plot.png'))
+        plt.savefig(os.path.join(self.output_folder, 'evaluation_scatter_plot.png'))
         plt.close()
         
         # Metrics
@@ -132,7 +128,7 @@ class Regressor:
             "Explained Variance Score": round(explained_variance, 4)
         } 
         
-        with open(os.path.join(output_folder, 'evaluation_metrics.json'), 'w') as f:
+        with open(os.path.join(self.output_folder, 'evaluation_metrics.json'), 'w') as f:
             json.dump(evaluation_metrics, f, indent=4)
             
         return evaluation_metrics
@@ -142,31 +138,25 @@ class Regressor:
             raise ValueError("The model has not been trained.")
         return self.model.predict(X)
 
-    def explain(self, X, feature_names, output_folder):
+    def explain(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         explainer = shap.Explainer(self.model)
-        explanation = explainer(X)
+        explanation = explainer(X) 
         
-        new_explanation = shap.Explanation(
-        values=explanation.values, 
-        base_values=explanation.base_values, 
-        data=explanation.data, 
-        feature_names=feature_names
-        )
         #waterfall plot
-        waterfall_plot = shap.plots.waterfall(new_explanation[0], max_display=15, show=False)
-        waterfall_plot.figure.savefig(os.path.join(output_folder, "interpretability_sample1.png"),  bbox_inches='tight') 
+        waterfall_plot = shap.plots.waterfall(explanation[0], max_display=15, show=False)
+        waterfall_plot.figure.savefig(os.path.join(self.output_folder, "interpretability_sample1.png"), bbox_inches='tight') 
         plt.close(waterfall_plot.figure)
         
         #summary plot 
-        summary_plot = shap.plots.bar(new_explanation, max_display=20,  show=False)
-        summary_plot.figure.savefig(os.path.join(output_folder, "interpretability_bar_plot.png"), bbox_inches='tight') 
+        summary_plot = shap.plots.bar(explanation, max_display=20,  show=False)
+        summary_plot.figure.savefig(os.path.join(self.output_folder, "interpretability_bar_plot.png"), bbox_inches='tight') 
         plt.close(summary_plot.figure)
         
         #beeswarm plot
-        beeswarm_plot = shap.plots.beeswarm(new_explanation,max_display=15, show=False)
-        beeswarm_plot.figure.savefig(os.path.join(output_folder, "interpretability_beeswarm_plot.png"), bbox_inches='tight') 
+        beeswarm_plot = shap.plots.beeswarm(explanation,max_display=15, show=False)
+        beeswarm_plot.figure.savefig(os.path.join(self.output_folder, "interpretability_beeswarm_plot.png"), bbox_inches='tight') 
         plt.close(beeswarm_plot.figure)
         
         return explanation

@@ -30,6 +30,7 @@ target = data["pchembl_value"] #target value's column_name
 smiles_train, smiles_valid, y_train, y_valid = train_test_split(smiles, target, test_size=0.2, random_state=42)
 ```
 Calculate and transform descriptors:
+Choose between Datamol, Mordred or the RDkitClassical Descriptors
 ```python
 from xai4chem import DatamolDescriptor
 
@@ -49,19 +50,19 @@ The tool provides a `Regressor` class for training and evaluating regression mod
 from xai4chem import Regressor
 
 # use xgboost or catboost
-regressor = Regressor(algorithm='xgboost', n_trials=200)
+regressor = Regressor(output_folder, algorithm='xgboost') #Specify the output folder where evaluation metrics and interpretability plots will be saved.
 
 # Train the model
-regressor.train(smiles_train_transformed, y_train, default_params=False)
+regressor.fit(smiles_train_transformed, y_train, default_params=False)
 
 #you can save the trained model
 #regressor.save('model.joblib') #pass the filename
 
 # Evaluate the model
-regressor.evaluate(smiles_valid_transformed, y_valid, output_folder) #the output folder is where evaluation metrics will be saved
+regressor.evaluate(smiles_valid_transformed, y_valid)
 ```
 ### Model Interpretation
 The `Regressor` class also provides functionality for interpreting model predictions. You can generate plots by;
 ```python
-regressor.explain(smiles_train_transformed, descriptor.feature_names, output_folder) #the output folder is where interpretability plots will be saved.
+regressor.explain(smiles_train_transformed)
 ```
