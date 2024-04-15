@@ -2,7 +2,6 @@ import os
 import pandas as pd
 import sys
 from sklearn.model_selection import train_test_split
-from featurewiz import FeatureWiz
 
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "xai4chem"))
@@ -40,23 +39,15 @@ if __name__ == "__main__":
     smiles_train_transformed = descriptor.transform(smiles_train)
     smiles_valid_transformed = descriptor.transform(smiles_valid)
 
-    # Feature Selection
-    fwiz = FeatureWiz(corr_limit=0.9, feature_engg='', category_encoders='',
-                      dask_xgboost_flag=False, nrows=None, verbose=0)
-    X_train_selected, _ = fwiz.fit_transform(smiles_train_transformed, y_train)
-    X_test_selected = fwiz.transform(smiles_valid_transformed)
-    # List of selected features
-    print(fwiz.features)
-
     # Instantiate the regressor
-    regressor = Regressor(output_folder, algorithm='xgboost')
+    regressor = Regressor(output_folder, algorithm='xgboost', feature_selection=True, corr_limit=0.9)
     
     # Train the model 
-    regressor.fit(X_train_selected, y_train, default_params=True)
+    regressor.fit(smiles_train_transformed, y_train, default_params=True)
     # regressor.save_model(os.path.join(root, "..", "results", 'xgboost_1.joblib'))
 
     # Evaluate model
-    regressor.evaluate(X_test_selected, y_valid)
+    regressor.evaluate(smiles_valid_transformed, y_valid)
 
     # Explain the model     
-    regressor.explain(X_train_selected)
+    regressor.explain(smiles_train_transformed)
