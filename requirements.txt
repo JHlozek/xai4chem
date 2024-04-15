@@ -5,6 +5,7 @@ shap==0.45.0
 xgboost<=2.0
 catboost==1.2.3
 optuna==3.5.0
+mordred==1.2.0
 pandas<=2.1
 matplotlib==3.8.3
 featurewiz==0.5.7

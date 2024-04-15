@@ -9,15 +9,20 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+from featurewiz import FeatureWiz
 
 
 class Regressor:
-    def __init__(self, output_folder, algorithm='xgboost', n_trials=200):
+    def __init__(self, output_folder, algorithm='xgboost', n_trials=200, feature_selection=False,corr_limit=0.9):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
         self.model = None 
-
+        self.feature_selection = feature_selection 
+        # Feature Selection
+        self.fwiz = FeatureWiz(corr_limit=corr_limit, feature_engg='', category_encoders='',dask_xgboost_flag=False, 
+                               nrows=None, verbose=0) 
+        
     def _optimize_xgboost(self, trial, X, y):
         params = {  
             'lambda': trial.suggest_int('lambda', 0, 5),
@@ -76,6 +81,11 @@ class Regressor:
         return mae
 
     def fit(self, X_train, y_train, default_params=True):
+        if self.feature_selection:
+            X_train, _ = self.fwiz.fit_transform(X_train, y_train) 
+        # List of selected features
+        print(self.fwiz.features)
+        
         if self.algorithm == 'xgboost':
             if not default_params:
                 study = optuna.create_study(direction="minimize")
@@ -103,7 +113,7 @@ class Regressor:
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
-        y_pred = self.model.predict(X_valid)
+        y_pred = self.predict(X_valid)
         joblib.dump((X_valid, y_valid, y_pred), os.path.join(self.output_folder, "evaluation_data.joblib"))
         
         plt.scatter(y_valid, y_pred) 
@@ -135,12 +145,16 @@ class Regressor:
     
     def predict(self, X):
         if self.model is None:
-            raise ValueError("The model has not been trained.")
+            raise ValueError("The model has not been trained.") 
+        if self.feature_selection:
+            X = self.fwiz.transform(X)   
         return self.model.predict(X)
 
     def explain(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.")
+        if self.feature_selection:
+            X = self.fwiz.transform(X)
         explainer = shap.Explainer(self.model)
         explanation = explainer(X) 
         
