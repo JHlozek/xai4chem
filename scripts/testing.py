@@ -40,11 +40,10 @@ if __name__ == "__main__":
     smiles_valid_transformed = descriptor.transform(smiles_valid)
 
     # Instantiate the regressor
-    regressor = Regressor(output_folder, algorithm='xgboost', feature_selection=True, corr_limit=0.9)
+    regressor = Regressor(output_folder, algorithm='xgboost', k=52)
     
     # Train the model 
-    regressor.fit(smiles_train_transformed, y_train, default_params=True)
-    # regressor.save_model(os.path.join(root, "..", "results", 'xgboost_1.joblib'))
+    regressor.fit(smiles_train_transformed, y_train) 
 
     # Evaluate model
     regressor.evaluate(smiles_valid_transformed, y_valid)
