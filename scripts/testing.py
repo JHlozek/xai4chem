@@ -10,6 +10,7 @@ from datamol_desc import DatamolDescriptor
 from rdkitclassical_desc import RDkitClassicalDescriptor
 from mordred_desc import MordredDescriptor
 from regressor import Regressor
+from morgan_desc import MorganFingerprint
 
 output_folder = os.path.join(root, "..", "assets")
 
@@ -31,7 +32,7 @@ if __name__ == "__main__":
     y_valid.reset_index(drop=True, inplace=True)
 
     # Instantiate the descriptor class
-    descriptor = RDkitClassicalDescriptor()
+    descriptor = MorganFingerprint()
 
     descriptor.fit(smiles_train)
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     smiles_valid_transformed = descriptor.transform(smiles_valid)
 
     # Instantiate the regressor
-    regressor = Regressor(output_folder, algorithm='xgboost', k=52)
+    regressor = Regressor(output_folder, algorithm='catboost')
     
     # Train the model 
     regressor.fit(smiles_train_transformed, y_train) 

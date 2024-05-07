@@ -101,7 +101,7 @@ class Regressor:
 
     def fit(self, X_train, y_train, default_params=True):
         self._select_features(X_train, y_train)
-        print(f'Selected features: {self.selected_features}')
+        # print(f'Selected features: {self.selected_features}')
         X_train = X_train[self.selected_features]
         
         if self.algorithm == 'xgboost':
