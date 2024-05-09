@@ -127,9 +127,6 @@ class Regressor:
             else:
                 self.model = CatBoostRegressor()
             self.model.fit(X_train, y_train, verbose=False)
-        elif self.algorithm == 'svr': 
-            self.model = SVR()
-            self.model.fit(X_train, y_train)
         elif self.algorithm == 'lgbm': 
             self.model = LGBMRegressor()
             self.model.fit(X_train, y_train)            
