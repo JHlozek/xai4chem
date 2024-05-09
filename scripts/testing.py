@@ -41,7 +41,7 @@ if __name__ == "__main__":
     smiles_valid_transformed = descriptor.transform(smiles_valid)
 
     # Instantiate the regressor
-    regressor = Regressor(output_folder, algorithm='catboost')
+    regressor = Regressor(output_folder, algorithm='xgboost')
     
     # Train the model 
     regressor.fit(smiles_train_transformed, y_train) 

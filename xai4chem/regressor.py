@@ -5,12 +5,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import optuna
-from xgboost import XGBRegressor
+# from xgboost import XGBRegressor
 from catboost import CatBoostRegressor 
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
+from sklearn.svm import SVR
+from flaml.default import LGBMRegressor, XGBRegressor
+from flaml.default import preprocess_and_suggest_hyperparams
 
 
 class Regressor:
@@ -124,6 +127,12 @@ class Regressor:
             else:
                 self.model = CatBoostRegressor()
             self.model.fit(X_train, y_train, verbose=False)
+        elif self.algorithm == 'svr': 
+            self.model = SVR()
+            self.model.fit(X_train, y_train)
+        elif self.algorithm == 'lgbm': 
+            self.model = LGBMRegressor()
+            self.model.fit(X_train, y_train)            
         else:
             raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
 
