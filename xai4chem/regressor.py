@@ -1,28 +1,64 @@
-import optuna
-from xgboost import XGBRegressor
-from catboost import CatBoostRegressor 
-from sklearn import metrics
-from sklearn.model_selection import train_test_split
 import shap
 import joblib
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+import optuna
+# from xgboost import XGBRegressor
+from catboost import CatBoostRegressor 
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
+from sklearn.svm import SVR
+from flaml.default import LGBMRegressor, XGBRegressor
+from flaml.default import preprocess_and_suggest_hyperparams
 
 
 class Regressor:
-    def __init__(self, output_folder, algorithm='xgboost', n_trials=200, feature_selection=False,corr_limit=0.9):
+    def __init__(self, output_folder, algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
         self.model = None 
-        self.feature_selection = feature_selection 
-        # Feature Selection
-        self.fwiz = FeatureWiz(corr_limit=corr_limit, feature_engg='', category_encoders='',dask_xgboost_flag=False, 
-                               nrows=None, verbose=0) 
+        self.max_features = k
+        self.selected_features = None 
         
+    def _select_features(self, X_train, y_train):
+        if self.max_features is None:
+            print("No maximum feature limit specified. Using all features.")
+            self.selected_features = list(X_train.columns)
+        elif X_train.shape[1] <= self.max_features:
+            print(f"Number of input features is less than or equal to {self.max_features}. Using all features.")
+            self.selected_features = list(X_train.columns)
+        else:
+            print(f"Features in the dataset are more than {self.max_features}. Using Featurewiz for feature selection")
+            fwiz = FeatureWiz(corr_limit=0.9, feature_engg='', category_encoders='', dask_xgboost_flag=False, nrows=None, verbose=0) 
+            X_train_fwiz, _ = fwiz.fit_transform(X_train, y_train) 
+            selected_features = fwiz.features
+            
+            if len(selected_features) >= self.max_features:
+                print(f"Number of features selected by Featurewiz exceeds {self.max_features}. Selecting top {self.max_features}")
+                self.selected_features = selected_features[:self.max_features]
+            else: 
+                print('Using Featurewiz,  skipping SULO algorithm in feature selection')
+                fwiz = FeatureWiz(corr_limit=0.9, skip_sulov=True, feature_engg='', category_encoders='', dask_xgboost_flag=False, nrows=None, verbose=0) 
+                X_train_fwiz, _ = fwiz.fit_transform(X_train, y_train) 
+                selected_features = fwiz.features
+                if len(selected_features) >= self.max_features:
+                    print(f"Number of features selected by Featurewiz exceeds {self.max_features}. Selecting top {self.max_features}")
+                    self.selected_features = selected_features[:self.max_features]
+                else:
+                    print(f"Number of features selected by Featurewiz is less than {self.max_features}. Using KBest selection.")
+                    selector = SelectKBest(score_func=mutual_info_regression, k=self.max_features)
+                    selector.fit(X_train, y_train)
+                    # Get the indices of the selected features
+                    selected_indices = np.argsort(selector.scores_)[::-1][:self.max_features]
+                    self.selected_features = X_train.columns[selected_indices]
+        
+        return self.selected_features
+
     def _optimize_xgboost(self, trial, X, y):
         params = {  
             'lambda': trial.suggest_int('lambda', 0, 5),
@@ -39,21 +75,8 @@ class Regressor:
             'early_stopping_rounds': 10
         }
 
-
         model = XGBRegressor(**params)
-        X_train, X_valid, y_train, y_valid = train_test_split(
-            X, 
-            y, 
-            test_size=0.2, 
-            random_state=42
-        ) 
-
-        model.fit(X_train,y_train,eval_set=[(X_valid,y_valid)],verbose=False)
-        
-        preds = model.predict(X_valid)
-        mae = metrics.mean_absolute_error(y_valid, preds)
-        
-        return mae
+        return self._train_and_evaluate_optuna_model(model, X, y)
 
     def _optimize_catboost(self, trial, X, y):
         params = {
@@ -67,24 +90,22 @@ class Regressor:
             'early_stopping_rounds': 10
         }
 
-        model = CatBoostRegressor( loss_function="RMSE",random_state=42,**params)
-        X_train, X_valid, y_train, y_valid = train_test_split(
-            X, 
-            y, 
-            test_size=0.2, 
-            random_state=42
-        ) 
-        model.fit(X_train,y_train,eval_set=[(X_valid,y_valid)],verbose=False)
+        model = CatBoostRegressor(loss_function="RMSE", random_state=42, **params)
+        return self._train_and_evaluate_optuna_model(model, X, y)
+
+    def _train_and_evaluate_optuna_model(self, model, X, y):
+        X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42) 
+
+        model.fit(X_train, y_train, eval_set=[(X_valid, y_valid)], verbose=False)
         
         preds = model.predict(X_valid)
         mae = metrics.mean_absolute_error(y_valid, preds)
         return mae
 
     def fit(self, X_train, y_train, default_params=True):
-        if self.feature_selection:
-            X_train, _ = self.fwiz.fit_transform(X_train, y_train) 
-        # List of selected features
-        print(self.fwiz.features)
+        self._select_features(X_train, y_train)
+        # print(f'Selected features: {self.selected_features}')
+        X_train = X_train[self.selected_features]
         
         if self.algorithm == 'xgboost':
             if not default_params:
@@ -106,8 +127,12 @@ class Regressor:
             else:
                 self.model = CatBoostRegressor()
             self.model.fit(X_train, y_train, verbose=False)
+        elif self.algorithm == 'lgbm': 
+            self.model = LGBMRegressor()
+            self.model.fit(X_train, y_train)            
         else:
-            raise ValueError("Invalid Algorithm. Supported Algorithms: 'xgboost', 'catboost'")
+            raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
+
 
     def evaluate(self, X_valid, y_valid):
         if self.model is None:
@@ -124,20 +149,13 @@ class Regressor:
         plt.close()
         
         # Metrics
-        mse = metrics.mean_squared_error(y_valid, y_pred)            
-        rmse = np.sqrt(mse) 
-        mae = metrics.mean_absolute_error(y_valid, y_pred)
-        r2 = metrics.r2_score(y_valid, y_pred)
-        explained_variance = metrics.explained_variance_score(y_valid, y_pred)
-        
         evaluation_metrics = {
-            "Mean Squared Error": round(mse, 4),
-            "Root Mean Squared Error": round(rmse, 4),
-            "Mean Absolute Error": round(mae, 4),
-            "R-squared Score": round(r2, 4),
-            "Explained Variance Score": round(explained_variance, 4)
-        } 
-        
+            "Mean Squared Error": round(metrics.mean_squared_error(y_valid, y_pred), 4),
+            "Root Mean Squared Error": round(np.sqrt(metrics.mean_squared_error(y_valid, y_pred)), 4),
+            "Mean Absolute Error": round(metrics.mean_absolute_error(y_valid, y_pred), 4),
+            "R-squared Score": round(metrics.r2_score(y_valid, y_pred), 4),
+            "Explained Variance Score": round(metrics.explained_variance_score(y_valid, y_pred), 4)
+            } 
         with open(os.path.join(self.output_folder, 'evaluation_metrics.json'), 'w') as f:
             json.dump(evaluation_metrics, f, indent=4)
             
@@ -146,16 +164,14 @@ class Regressor:
     def predict(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.") 
-        if self.feature_selection:
-            X = self.fwiz.transform(X)   
+        X = X[self.selected_features]  
         return self.model.predict(X)
 
     def explain(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.")
-        if self.feature_selection:
-            X = self.fwiz.transform(X)
-        explainer = shap.Explainer(self.model)
+        X = X[self.selected_features]
+        explainer = shap.TreeExplainer(self.model)
         explanation = explainer(X) 
         
         #waterfall plot
