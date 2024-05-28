@@ -28,9 +28,15 @@ target = data["pchembl_value"] #target value's column_name
 
 # Split data into training and test sets
 smiles_train, smiles_valid, y_train, y_valid = train_test_split(smiles, target, test_size=0.2, random_state=42)
+
+# Reset indices
+smiles_train.reset_index(drop=True, inplace=True)
+smiles_valid.reset_index(drop=True, inplace=True)
+y_train.reset_index(drop=True, inplace=True)
+y_valid.reset_index(drop=True, inplace=True)
 ```
 Calculate and transform descriptors:
-Choose between Datamol, Mordred or the RDkitClassical Descriptors
+Choose either Descriptors( any of; Datamol, Mordred and RDKit) or Fingerprints(Morgan) 
 ```python
 from xai4chem import DatamolDescriptor
 
@@ -45,15 +51,15 @@ smiles_valid_transformed = descriptor.transform(smiles_valid)
 ```
 
 ### Model Training and Evaluation
-The tool provides a `Regressor` class for training and evaluating regression models. It supports both XGBoost and CatBoost algorithms. You can train the model with default parameters or perform hyperparameter optimization using Optuna.
+The tool provides a `Regressor` class for training and evaluating regression models. It supports XGBoost, LGBM and CatBoost algorithms. You can train the model with default parameters or perform hyperparameter optimization using Optuna.
 
-Also, feature selection can be set to True to automatically select relevant features during training  using the FeatureWiz library.
-Higher value of corr_limit will result in more features. 
+Also, you can specify the number of features(k) to use.
+Feature selection will automatically select the relevant k features during training. 
 ```python
 from xai4chem import Regressor
 
-# use xgboost or catboost
-regressor = Regressor(output_folder, algorithm='xgboost', feature_selection=True, corr_limit=0.9) #Specify the output folder where evaluation metrics and interpretability plots will be saved.
+# use xgboost,lgbm or catboost
+regressor = Regressor(output_folder, algorithm='xgboost', k=100) #Specify the output folder where evaluation metrics and interpretability plots will be saved.
 
 # Train the model
 regressor.fit(smiles_train_transformed, y_train, default_params=False)
@@ -69,3 +75,17 @@ The `Regressor` class also provides functionality for interpreting model predict
 ```python
 regressor.explain(smiles_train_transformed)
 ```
+
+#### Classification model.
+To generate interpretability plots for a trained classification model, use;
+```python
+from xai4chem.explain_model import explain_model
+
+explanation = explain_model(model, X, output_folder)
+
+# Parameters:
+# model: A trained model.
+# X: The feature set used for explanation.
+# output_folder: Folder to save the interpretability plots.
+```
+

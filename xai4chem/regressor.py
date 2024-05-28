@@ -1,19 +1,19 @@
-import shap
 import joblib
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import json
 import optuna
-# from xgboost import XGBRegressor
+import xgboost
+import lightgbm
 from catboost import CatBoostRegressor 
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
-from sklearn.svm import SVR
 from flaml.default import LGBMRegressor, XGBRegressor
 from flaml.default import preprocess_and_suggest_hyperparams
+from .explain_model import explain_model
 
 
 class Regressor:
@@ -75,7 +75,7 @@ class Regressor:
             'early_stopping_rounds': 10
         }
 
-        model = XGBRegressor(**params)
+        model = xgboost.XGBRegressor(**params)
         return self._train_and_evaluate_optuna_model(model, X, y)
 
     def _optimize_catboost(self, trial, X, y):
@@ -106,17 +106,23 @@ class Regressor:
         self._select_features(X_train, y_train)
         # print(f'Selected features: {self.selected_features}')
         X_train = X_train[self.selected_features]
-        
         if self.algorithm == 'xgboost':
             if not default_params:
                 study = optuna.create_study(direction="minimize")
                 study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials)
                 best_params = study.best_params
                 print('Best parameters for XGBoost:', best_params)
-                self.model = XGBRegressor(**best_params)
+                self.model = xgboost.XGBRegressor(**best_params)
             else:
-                self.model = XGBRegressor()
-            self.model.fit(X_train, y_train)
+                estimator = XGBRegressor()
+                (
+                    hyperparams,
+                    estimator_name,
+                    X_transformed,
+                    y_transformed,
+                ) = estimator.suggest_hyperparams(X_train, y_train)
+                self.model = xgboost.XGBRegressor(**hyperparams)
+            self.model.fit(X_train, y_train)                
         elif self.algorithm == 'catboost': 
             if not default_params:
                 study = optuna.create_study(direction="minimize") 
@@ -127,9 +133,17 @@ class Regressor:
             else:
                 self.model = CatBoostRegressor()
             self.model.fit(X_train, y_train, verbose=False)
-        elif self.algorithm == 'lgbm': 
-            self.model = LGBMRegressor()
-            self.model.fit(X_train, y_train)            
+        elif self.algorithm == 'lgbm':
+            estimator = LGBMRegressor()
+            (
+                hyperparams,
+                estimator_name,
+                X_transformed,
+                y_transformed,
+            ) = estimator.suggest_hyperparams(X_train, y_train)
+                
+            self.model = lightgbm.LGBMRegressor(**hyperparams)
+            self.model.fit(X_train, y_train)          
         else:
             raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
 
@@ -171,25 +185,9 @@ class Regressor:
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X[self.selected_features]
-        explainer = shap.TreeExplainer(self.model)
-        explanation = explainer(X) 
-        
-        #waterfall plot
-        waterfall_plot = shap.plots.waterfall(explanation[0], max_display=15, show=False)
-        waterfall_plot.figure.savefig(os.path.join(self.output_folder, "interpretability_sample1.png"), bbox_inches='tight') 
-        plt.close(waterfall_plot.figure)
-        
-        #summary plot 
-        summary_plot = shap.plots.bar(explanation, max_display=20,  show=False)
-        summary_plot.figure.savefig(os.path.join(self.output_folder, "interpretability_bar_plot.png"), bbox_inches='tight') 
-        plt.close(summary_plot.figure)
-        
-        #beeswarm plot
-        beeswarm_plot = shap.plots.beeswarm(explanation,max_display=15, show=False)
-        beeswarm_plot.figure.savefig(os.path.join(self.output_folder, "interpretability_beeswarm_plot.png"), bbox_inches='tight') 
-        plt.close(beeswarm_plot.figure)
-        
+        explanation = explain_model(self.model, X, self.output_folder)
         return explanation
+
 
     def save_model(self, filename):
         if self.model is None:
