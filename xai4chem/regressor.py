@@ -13,7 +13,7 @@ from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
 from flaml.default import LGBMRegressor, XGBRegressor
 from flaml.default import preprocess_and_suggest_hyperparams
-from explain_model import explain_model
+from .explain_model import explain_model
 
 
 class Regressor:
