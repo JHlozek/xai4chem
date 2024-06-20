@@ -47,7 +47,7 @@ if __name__ == "__main__":
     regressor.fit(smiles_train_transformed, y_train) 
 
     # Evaluate model
-    regressor.evaluate(smiles_valid_transformed, y_valid)
+    regressor.evaluate(smiles_valid, smiles_valid_transformed, y_valid)
 
     # Explain the model     
-    regressor.explain(smiles_train_transformed)
+    regressor.explain(smiles_train_transformed, smiles_train)

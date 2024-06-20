@@ -1,6 +1,7 @@
 import joblib
 import os
 import numpy as np
+import  pandas as pd
 import matplotlib.pyplot as plt
 import json
 import optuna
@@ -13,17 +14,17 @@ from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
 from flaml.default import LGBMRegressor, XGBRegressor
 from flaml.default import preprocess_and_suggest_hyperparams
-from .explain_model import explain_model
+from explain_model import explain_model
 
 
 class Regressor:
-    def __init__(self, output_folder, algorithm='xgboost', n_trials=500, k=None):
+    def __init__(self, output_folder,  algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
         self.model = None 
         self.max_features = k
-        self.selected_features = None 
+        self.selected_features = None
         
     def _select_features(self, X_train, y_train):
         if self.max_features is None:
@@ -148,12 +149,20 @@ class Regressor:
             raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
 
 
-    def evaluate(self, X_valid, y_valid):
+    def evaluate(self,smiles_valid, X_valid_features, y_valid):
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
-        y_pred = self.predict(X_valid)
-        joblib.dump((X_valid, y_valid, y_pred), os.path.join(self.output_folder, "evaluation_data.joblib"))
+        y_pred = self.predict(X_valid_features)
+        # A dataFrame with the predictions
+        evaluation_data = pd.DataFrame({
+            'SMILES': smiles_valid,
+            'Actual Value': y_valid,
+            'Predicted Value': y_pred
+        })
+
+        # Save as a CSV file
+        evaluation_data.to_csv(os.path.join(self.output_folder, "evaluation_data.csv"), index=False)
         
         plt.scatter(y_valid, y_pred) 
         plt.xlabel('True Values')
@@ -181,11 +190,11 @@ class Regressor:
         X = X[self.selected_features]  
         return self.model.predict(X)
 
-    def explain(self, X):
+    def explain(self, X_features, smiles_list=None):
         if self.model is None:
             raise ValueError("The model has not been trained.")
-        X = X[self.selected_features]
-        explanation = explain_model(self.model, X, self.output_folder)
+        X = X_features[self.selected_features]
+        explanation = explain_model(self.model,  X, smiles_list, self.output_folder)
         return explanation
 
 
