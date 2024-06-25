@@ -205,3 +205,4 @@ class Regressor:
 
     def load_model(self, filename):
         self.model = joblib.load(filename)
+        
