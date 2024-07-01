@@ -12,7 +12,7 @@ from mordred_desc import MordredDescriptor
 from regressor import Regressor
 from morgan_desc import MorganFingerprint
 
-output_folder = os.path.join(root, "..", "assets")
+output_folder = os.path.join(root, "..", "results")
 
 if __name__ == "__main__":
     # Read data from CSV file into a DataFrame
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     y_valid.reset_index(drop=True, inplace=True)
 
     # Instantiate the descriptor class
-    descriptor = MorganFingerprint()
+    descriptor = DatamolDescriptor(discretize=False)
 
     descriptor.fit(smiles_train)
 
@@ -47,7 +47,8 @@ if __name__ == "__main__":
     regressor.fit(smiles_train_transformed, y_train) 
 
     # Evaluate model
-    regressor.evaluate(smiles_valid_transformed, y_valid)
+    regressor.evaluate(smiles_valid, smiles_valid_transformed, y_valid)
 
     # Explain the model     
-    regressor.explain(smiles_train_transformed)
+    regressor.explain(smiles_train_transformed, smiles_train)
+    
