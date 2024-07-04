@@ -14,7 +14,9 @@ from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
 from flaml.default import LGBMRegressor, XGBRegressor
 from flaml.default import preprocess_and_suggest_hyperparams
-from explain_model import explain_model
+import sys
+sys.path.append('.')
+from xai4chem.explain_model import explain_model
 
 
 class Regressor:
@@ -149,7 +151,7 @@ class Regressor:
             raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
 
 
-    def evaluate(self,smiles_valid, X_valid_features, y_valid):
+    def evaluate(self, X_valid_features, smiles_valid, y_valid):
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
@@ -190,11 +192,11 @@ class Regressor:
         X = X[self.selected_features]  
         return self.model.predict(X)
 
-    def explain(self, X_features, smiles_list=None):
+    def explain(self, X_features, smiles_list=None, use_fingerprints=False):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X_features[self.selected_features]
-        explanation = explain_model(self.model,  X, smiles_list, self.output_folder)
+        explanation = explain_model(self.model,  X, smiles_list, use_fingerprints, self.output_folder)
         return explanation
 
 
