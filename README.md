@@ -36,7 +36,7 @@ y_train.reset_index(drop=True, inplace=True)
 y_valid.reset_index(drop=True, inplace=True)
 ```
 Calculate and transform descriptors:
-Choose either Descriptors( any of; Datamol, Mordred and RDKit) or Fingerprints(Morgan) 
+Choose either Descriptors( any of; Datamol, Mordred and RDKit) or Fingerprints(Morgan or RDKit) 
 ```python
 from xai4chem import DatamolDescriptor
 
@@ -68,12 +68,12 @@ regressor.fit(smiles_train_transformed, y_train, default_params=False)
 #regressor.save('model_filename.joblib') #pass the filename
 
 # Evaluate the model
-regressor.evaluate(smiles_valid_transformed, y_valid)
+regressor.evaluate(valid_features, smiles_valid, y_valid)
 ```
 ### Model Interpretation
 The `Regressor` class also provides functionality for interpreting model predictions. You can generate plots by;
 ```python
-regressor.explain(smiles_train_transformed)
+regressor.explain(train_features, smiles_list=smiles_train, fingerprints='rdkit') #fingerprints='rdkit' or 'morgan'
 ```
 
 #### Classification model.
@@ -81,11 +81,13 @@ To generate interpretability plots for a trained classification model, use;
 ```python
 from xai4chem.explain_model import explain_model
 
-explanation = explain_model(model, X, output_folder)
+explanation = explain_model(model, X, smiles_list, output_folder, fingerprints='morgan') #fingerprints='rdkit' or 'morgan'
 
 # Parameters:
 # model: A trained model.
 # X: The feature set used for explanation.
+# smiles_list: The list of smiles to explain.
 # output_folder: Folder to save the interpretability plots.
+# fingerprints: Optional, unless fingerprints were used to train the model('rdkit' or 'morgan')
 ```
 
