@@ -1,3 +1,5 @@
+# %% [code]
+# %% [code]
 import os
 import joblib
 import numpy as np
@@ -162,14 +164,14 @@ class Classifier:
         optimal_idx = np.argmax(tpr - fpr)
         optimal_tpr = tpr[optimal_idx]
         optimal_fpr = fpr[optimal_idx]
-        print(f"Optimal Threshold (Youden's J): {round(self.optimal_threshold, 4)}")
-        print(f"Corresponding TPR: {round(optimal_tpr, 4)}")
-        print(f"Corresponding FPR: {round(optimal_fpr, 4)}")
+        # print(f"Optimal Threshold (Youden's J): {round(self.optimal_threshold, 4)}")
+        # print(f"Corresponding TPR: {round(optimal_tpr, 4)}")
+        # print(f"Corresponding FPR: {round(optimal_fpr, 4)}")
 
         optimal_threshold_fpr_5 = thresholds[fpr <= 0.05][-1] # 0.05 is max_fpr
-        print(f"Optimal Threshold (Max FPR 0.05): {round(optimal_threshold_fpr_5,4)}")
+        # print(f"Optimal Threshold (Max FPR 0.05): {round(optimal_threshold_fpr_5,4)}")
         optimal_threshold_fpr_10 = thresholds[fpr <= 0.1][-1] # 0.1 is max_fpr
-        print(f"Optimal Threshold (Max FPR 0.1): {round(optimal_threshold_fpr_10, 4)}")
+        # print(f"Optimal Threshold (Max FPR 0.1): {round(optimal_threshold_fpr_10, 4)}")
 
         # Predictions using default threshold (0.5)
         y_pred_default = (y_proba >= 0.5).astype(int)
@@ -234,7 +236,7 @@ class Classifier:
         plt.savefig(os.path.join(self.output_folder, 'roc_curve.png'))
         plt.close()
 
-        # Other evaluation metrics for all thresholds
+        # Evaluation metrics for all thresholds
         metrics_default = {
             "Accuracy": round(metrics.accuracy_score(y_valid, y_pred_default), 4),
             "Precision": round(metrics.precision_score(y_valid, y_pred_default, average='macro'), 4),
@@ -275,14 +277,6 @@ class Classifier:
         with open(os.path.join(self.output_folder, 'evaluation_metrics_fpr_10.json'), 'w') as f:
             json.dump(metrics_fpr_10, f, indent=4)    
 
-        print("Evaluation metrics (Default Threshold):", metrics_default)        
-        print(classification_report(y_valid, y_pred_default))
-        print("Evaluation metrics (Optimal Threshold - Youden's J):", metrics_optimal)
-        print(classification_report(y_valid, y_pred_optimal))
-        print("Evaluation metrics (Optimal Threshold - Max FPR 0.05):", metrics_fpr_5)
-        print(classification_report(y_valid, y_pred_fpr_5))
-        print("Evaluation metrics (Optimal Threshold - Max FPR 0.1):", metrics_fpr_10)
-        print(classification_report(y_valid, y_pred_fpr_10))
         return metrics_default, metrics_optimal, metrics_fpr_5, metrics_fpr_10
 
 
@@ -295,11 +289,11 @@ class Classifier:
         y_pred_optimal = (y_proba >= self.optimal_threshold).astype(int)
         return y_pred_default, y_pred_optimal
 
-    def explain(self, X_features, smiles_list=None, use_fingerprints=False):
+    def explain(self, X_features, smiles_list=None, fingerprints=None):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X_features[self.selected_features]
-        explanation = explain_model(self.model, X, smiles_list, use_fingerprints, self.output_folder)
+        explanation = explain_model(self.model, X, smiles_list, self.output_folder, fingerprints)
         return explanation
 
     def save_model(self, filename):

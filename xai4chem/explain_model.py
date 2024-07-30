@@ -151,7 +151,7 @@ def highlight_and_draw_molecule(mol, bit_info, valid_top_bits, bit_shap_values, 
             atom_colors[atom] = color
         for bond in bonds:
             bond_colors[bond] = color
-    print('smiles', smiles, 'bits: ', valid_top_bits)
+    # print('smiles', smiles, 'bits: ', valid_top_bits)
     for bit in valid_top_bits:
         shap_value = bit_shap_values.get(bit, 0)
         color = (1, 0, 0, 0.6) if shap_value > 0 else (0, 0, 1, 0.6)
