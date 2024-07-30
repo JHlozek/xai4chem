@@ -192,11 +192,11 @@ class Regressor:
         X = X[self.selected_features]  
         return self.model.predict(X)
 
-    def explain(self, X_features, smiles_list=None, use_fingerprints=False):
+    def explain(self, X_features, smiles_list=None, fingerprints=None):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X_features[self.selected_features]
-        explanation = explain_model(self.model,  X, smiles_list, use_fingerprints, self.output_folder)
+        explanation = explain_model(self.model,  X, smiles_list, self.output_folder, fingerprints)
         return explanation
 
 

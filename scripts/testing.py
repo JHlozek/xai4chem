@@ -10,7 +10,8 @@ from datamol_desc import DatamolDescriptor
 from rdkitclassical_desc import RDkitClassicalDescriptor
 from mordred_desc import MordredDescriptor
 from regressor import Regressor
-from morgan_desc import MorganFingerprint
+from morgan_fps import MorganFingerprint
+from rdkit_fps import  RDKitFingerprint
 
 output_folder = os.path.join(root, "..", "results")
 
@@ -32,7 +33,7 @@ if __name__ == "__main__":
     y_valid.reset_index(drop=True, inplace=True)
 
     # Instantiate the descriptor class
-    descriptor = MorganFingerprint()
+    descriptor = RDKitFingerprint()
 
     descriptor.fit(smiles_train)
 
@@ -50,6 +51,6 @@ if __name__ == "__main__":
     regressor.evaluate(valid_features, smiles_valid, y_valid)
 
     # Explain the model     
-    regressor.explain(train_features, smiles_list=smiles_train, use_fingerprints=True)
+    regressor.explain(train_features, smiles_list=smiles_train, fingerprints='rdkit')
     
     
