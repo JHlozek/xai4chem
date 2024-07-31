@@ -30,7 +30,7 @@ class _Fingerprinter(object):
 
 def morgan_featurizer(smiles):
     d = _Fingerprinter()
-    X = np.zeros((len(smiles), NBITS))
+    X = np.zeros((len(smiles), NBITS), dtype=np.int8)
     for i, smi in enumerate(smiles):
         mol = Chem.MolFromSmiles(smi)
         X[i,:] = d.calc(mol)

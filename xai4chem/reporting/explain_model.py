@@ -18,6 +18,7 @@ _MAX_PATH_LEN = 7
 
 
 def explain_model(model, X, smiles_list, output_folder, fingerprints='morgan'):
+    print('Explaining model')
     create_output_folder(output_folder)
 
     explainer = shap.TreeExplainer(model)
@@ -34,7 +35,7 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints='morgan'):
     plot_summary_plots(explanation, output_folder)
     plot_scatter_plots(explanation, X.columns, output_folder)
 
-    if smiles_list is not None:
+    if smiles_list is not None and fingerprints is not None:
         for i, idx in enumerate(sample_indices):
             smiles = smiles_list[idx]
             mol = Chem.MolFromSmiles(smiles)
