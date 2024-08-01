@@ -17,7 +17,7 @@ from xai4chem.reporting import explain_model, classification_metrics
 
 
 class Classifier:
-    def __init__(self, output_folder, descriptor, algorithm='xgboost', n_trials=500, k=None):
+    def __init__(self, output_folder,  descriptor=None, algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
@@ -25,6 +25,7 @@ class Classifier:
         self.max_features = k
         self.selected_features = None
         self.descriptor = descriptor
+        self.model_type = 'classifier'
         self.optimal_threshold = None  # Store the optimal threshold
 
     def _select_features(self, X_train, y_train):
@@ -157,7 +158,7 @@ class Classifier:
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
-        y_proba = self.model.predict_proba(X_valid_features)[:, 1]
+        y_proba, _ = self.model_predict(X_valid_features)
 
         # Calculate ROC curve and optimal thresholds
         fpr, tpr, thresholds = metrics.roc_curve(y_valid, y_proba)
@@ -169,14 +170,18 @@ class Classifier:
 
         return metrics_default, metrics_optimal, metrics_fpr_5
 
-    def predict(self, X):
+    def model_predict(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.")
+        print('..predicting..')
         X = X[self.selected_features]
         y_proba = self.model.predict_proba(X)[:, 1]
-        y_pred_default = (y_proba >= 0.5).astype(int)
-        y_pred_optimal = (y_proba >= self.optimal_threshold).astype(int)
-        return y_proba, y_pred_default, y_pred_optimal
+        y_pred = (y_proba >= 0.5).astype(int)
+        # if self.optimal_threshold is not None:
+        #     y_pred_optimal = (y_proba >= self.optimal_threshold).astype(int)
+        #     return y_proba, y_pred, y_pred_optimal
+        # else:
+        return y_proba, y_pred
 
     def explain(self, X_features, smiles_list=None, fingerprints=None):
         if self.model is None:
@@ -192,6 +197,7 @@ class Classifier:
             'model': self.model,
             'selected_features': self.selected_features,
             'descriptor': self.descriptor,
+            'model_type': self.model_type,
             'optimal_threshold': self.optimal_threshold
         }
         joblib.dump(model_data, filename)
@@ -199,6 +205,7 @@ class Classifier:
     def load_model(self, filename):
         model_data = joblib.load(filename)
         self.model = model_data['model']
-        self.selected_features = model_data['selected_features'],
+        self.selected_features = model_data['selected_features']     
         self.optimal_threshold = model_data['optimal_threshold']
         self.descriptor = model_data["descriptor"]
+        self.model_type = model_data["model_type"]

@@ -21,7 +21,7 @@ from xai4chem.reporting import explain_model, regression_metrics
 
 
 class Regressor:
-    def __init__(self, output_folder, descriptor, algorithm='xgboost', n_trials=500, k=None):
+    def __init__(self, output_folder, descriptor=None, algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
@@ -29,6 +29,7 @@ class Regressor:
         self.max_features = k
         self.selected_features = None
         self.descriptor = descriptor
+        self.model_type = 'regressor'
 
     def _select_features(self, X_train, y_train):
         if self.max_features is None:
@@ -161,16 +162,16 @@ class Regressor:
         if self.model is None:
             raise ValueError("The model has not been trained.")
 
-        y_pred = self.predict(X_valid_features)
+        y_pred = self.model_predict(X_valid_features)
 
         evaluation_metrics = regression_metrics(smiles_valid, y_valid, y_pred, self.output_folder)
 
         return evaluation_metrics
 
-    def predict(self, X):
+    def model_predict(self, X):
         if self.model is None:
             raise ValueError("The model has not been trained.")
-        X = X[self.selected_features]
+        X = X[list(self.selected_features)]
         return self.model.predict(X)
 
     def explain(self, X_features, smiles_list=None, fingerprints=None):
@@ -186,7 +187,8 @@ class Regressor:
         model_data = {
             'model': self.model,
             'selected_features': self.selected_features,
-            'descriptor': self.descriptor
+            'descriptor': self.descriptor,
+            'model_type': self.model_type
         }
         joblib.dump(model_data, filename)
 
@@ -195,3 +197,4 @@ class Regressor:
         self.model = model_data['model']
         self.selected_features = model_data['selected_features']
         self.descriptor = model_data["descriptor"]
+        self.model_type = model_data["model_type"]
