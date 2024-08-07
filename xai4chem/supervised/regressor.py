@@ -21,15 +21,14 @@ from xai4chem.reporting import explain_model, regression_metrics
 
 
 class Regressor:
-    def __init__(self, output_folder, descriptor=None, algorithm='xgboost', n_trials=500, k=None):
+    def __init__(self, output_folder, fingerprints=None, algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
         self.model = None
         self.max_features = k
         self.selected_features = None
-        self.descriptor = descriptor
-        self.model_type = 'regressor'
+        self.fingerprints = fingerprints
 
     def _select_features(self, X_train, y_train):
         if self.max_features is None:
@@ -47,7 +46,7 @@ class Regressor:
 
             if len(selected_features) >= self.max_features:
                 print(
-                    f"Number of features selected by Featurewiz exceeds {self.max_features}. Selecting top {self.max_features}")
+                    f"Selecting top {self.max_features}")
                 self.selected_features = selected_features[:self.max_features]
             else:
                 print('Using Featurewiz,  skipping SULO algorithm in feature selection')
@@ -57,7 +56,7 @@ class Regressor:
                 selected_features = fwiz.features
                 if len(selected_features) >= self.max_features:
                     print(
-                        f"Number of features selected by Featurewiz exceeds {self.max_features}. Selecting top {self.max_features}")
+                        f"Selecting top {self.max_features}")
                     self.selected_features = selected_features[:self.max_features]
                 else:
                     print(
@@ -174,11 +173,11 @@ class Regressor:
         X = X[list(self.selected_features)]
         return self.model.predict(X)
 
-    def explain(self, X_features, smiles_list=None, fingerprints=None):
+    def explain(self, X_features, smiles_list=None):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X_features[self.selected_features]
-        explanation = explain_model(self.model, X, smiles_list, self.output_folder, fingerprints)
+        explanation = explain_model(self.model, X, smiles_list, self.output_folder, self.fingerprints)
         return explanation
 
     def save_model(self, filename):
@@ -187,8 +186,7 @@ class Regressor:
         model_data = {
             'model': self.model,
             'selected_features': self.selected_features,
-            'descriptor': self.descriptor,
-            'model_type': self.model_type
+            'fingerprints': self.fingerprints, 
         }
         joblib.dump(model_data, filename)
 
@@ -196,5 +194,4 @@ class Regressor:
         model_data = joblib.load(filename)
         self.model = model_data['model']
         self.selected_features = model_data['selected_features']
-        self.descriptor = model_data["descriptor"]
-        self.model_type = model_data["model_type"]
+        self.fingerprints = model_data["fingerprints"] 

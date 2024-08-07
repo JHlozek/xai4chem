@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 from sklearn import metrics
 from sklearn.metrics import classification_report, ConfusionMatrixDisplay
 
-
 def classification_metrics(smiles_valid, y_valid, y_proba, output_folder):
     # Calculate ROC curve and optimal thresholds
     fpr, tpr, thresholds = metrics.roc_curve(y_valid, y_proba)
@@ -16,12 +15,8 @@ def classification_metrics(smiles_valid, y_valid, y_proba, output_folder):
     optimal_idx = np.argmax(tpr - fpr)
     optimal_tpr = tpr[optimal_idx]
     optimal_fpr = fpr[optimal_idx]
-    # print(f"Optimal Threshold (Youden's J): {round(optimal_threshold, 4)}")
-    # print(f"Corresponding TPR: {round(optimal_tpr, 4)}")
-    # print(f"Corresponding FPR: {round(optimal_fpr, 4)}")
 
-    optimal_threshold_fpr_5 = thresholds[fpr <= 0.05][-1]  # 0.05 is max_fpr
-    # print(f"Optimal Threshold (Max FPR 0.05): {round(optimal_threshold_fpr_5,4)}")
+    optimal_threshold_fpr_5 = thresholds[fpr <= 0.05][-1]  # 0.05 is max_fpr 
 
     # Predictions using default threshold (0.5)
     y_pred_default = (y_proba >= 0.5).astype(int)
@@ -81,34 +76,31 @@ def classification_metrics(smiles_valid, y_valid, y_proba, output_folder):
     plt.close()
 
     # Evaluation metrics for all thresholds
-    metrics_default = {
-        "Accuracy": round(metrics.accuracy_score(y_valid, y_pred_default), 4),
-        "Precision": round(metrics.precision_score(y_valid, y_pred_default, average='macro'), 4),
-        "Recall": round(metrics.recall_score(y_valid, y_pred_default, average='macro'), 4),
-        "F1 Score": round(metrics.f1_score(y_valid, y_pred_default, average='macro'), 4)
+    metrics_data = {
+        "Threshold Type": ["Default", "Optimal (Youden's J)", "Optimal (Max FPR 0.05)"],
+        "Accuracy": [
+            round(metrics.accuracy_score(y_valid, y_pred_default), 4),
+            round(metrics.accuracy_score(y_valid, y_pred_optimal), 4),
+            round(metrics.accuracy_score(y_valid, y_pred_fpr_5), 4)
+        ],
+        "Precision": [
+            round(metrics.precision_score(y_valid, y_pred_default, average='macro'), 4),
+            round(metrics.precision_score(y_valid, y_pred_optimal, average='macro'), 4),
+            round(metrics.precision_score(y_valid, y_pred_fpr_5, average='macro'), 4)
+        ],
+        "Recall": [
+            round(metrics.recall_score(y_valid, y_pred_default, average='macro'), 4),
+            round(metrics.recall_score(y_valid, y_pred_optimal, average='macro'), 4),
+            round(metrics.recall_score(y_valid, y_pred_fpr_5, average='macro'), 4)
+        ],
+        "F1 Score": [
+            round(metrics.f1_score(y_valid, y_pred_default, average='macro'), 4),
+            round(metrics.f1_score(y_valid, y_pred_optimal, average='macro'), 4),
+            round(metrics.f1_score(y_valid, y_pred_fpr_5, average='macro'), 4)
+        ]
     }
 
-    metrics_optimal = {
-        "Accuracy": round(metrics.accuracy_score(y_valid, y_pred_optimal), 4),
-        "Precision": round(metrics.precision_score(y_valid, y_pred_optimal, average='macro'), 4),
-        "Recall": round(metrics.recall_score(y_valid, y_pred_optimal, average='macro'), 4),
-        "F1 Score": round(metrics.f1_score(y_valid, y_pred_optimal, average='macro'), 4)
-    }
+    metrics_df = pd.DataFrame(metrics_data)
+    metrics_df.to_csv(os.path.join(output_folder, 'performance_metrics.csv'), index=False)
 
-    metrics_fpr_5 = {
-        "Accuracy": round(metrics.accuracy_score(y_valid, y_pred_fpr_5), 4),
-        "Precision": round(metrics.precision_score(y_valid, y_pred_fpr_5, average='macro'), 4),
-        "Recall": round(metrics.recall_score(y_valid, y_pred_fpr_5, average='macro'), 4),
-        "F1 Score": round(metrics.f1_score(y_valid, y_pred_fpr_5, average='macro'), 4)
-    }
-
-    with open(os.path.join(output_folder, 'evaluation_metrics_default.json'), 'w') as f:
-        json.dump(metrics_default, f, indent=4)
-
-    with open(os.path.join(output_folder, 'evaluation_metrics_optimal.json'), 'w') as f:
-        json.dump(metrics_optimal, f, indent=4)
-
-    with open(os.path.join(output_folder, 'evaluation_metrics_fpr_5.json'), 'w') as f:
-        json.dump(metrics_fpr_5, f, indent=4)
-
-    return metrics_default, metrics_optimal, metrics_fpr_5
+    return metrics_df

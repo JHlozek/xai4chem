@@ -17,15 +17,14 @@ from xai4chem.reporting import explain_model, classification_metrics
 
 
 class Classifier:
-    def __init__(self, output_folder,  descriptor=None, algorithm='xgboost', n_trials=500, k=None):
+    def __init__(self, output_folder,  fingerprints=None, algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
         self.model = None
         self.max_features = k
         self.selected_features = None
-        self.descriptor = descriptor
-        self.model_type = 'classifier'
+        self.fingerprints = fingerprints 
         self.optimal_threshold = None  # Store the optimal threshold
 
     def _select_features(self, X_train, y_train):
@@ -44,7 +43,7 @@ class Classifier:
 
             if len(selected_features) >= self.max_features:
                 print(
-                    f"Number of features selected by Featurewiz exceeds {self.max_features}. Selecting top {self.max_features}")
+                    f"Selecting top {self.max_features}")
                 self.selected_features = selected_features[:self.max_features]
             else:
                 print('Using Featurewiz, skipping SULO algorithm in feature selection')
@@ -54,7 +53,7 @@ class Classifier:
                 selected_features = fwiz.features
                 if len(selected_features) >= self.max_features:
                     print(
-                        f"Number of features selected by Featurewiz exceeds {self.max_features}. Selecting top {self.max_features}")
+                        f"Selecting top {self.max_features}")
                     self.selected_features = selected_features[:self.max_features]
                 else:
                     print(
@@ -166,9 +165,9 @@ class Classifier:
 
         self.optimal_threshold = thresholds[np.argmax(tpr - fpr)]  # Youden's J statistic
 
-        metrics_default, metrics_optimal, metrics_fpr_5 = classification_metrics(smiles_valid, y_valid, y_proba, self.output_folder)
+        eval_metrics = classification_metrics(smiles_valid, y_valid, y_proba, self.output_folder)
 
-        return metrics_default, metrics_optimal, metrics_fpr_5
+        return eval_metrics
 
     def model_predict(self, X):
         if self.model is None:
@@ -183,11 +182,11 @@ class Classifier:
         # else:
         return y_proba, y_pred
 
-    def explain(self, X_features, smiles_list=None, fingerprints=None):
+    def explain(self, X_features, smiles_list=None):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X_features[self.selected_features]
-        explanation = explain_model(self.model, X, smiles_list, self.output_folder, fingerprints)
+        explanation = explain_model(self.model, X, smiles_list, self.output_folder, self.fingerprints)
         return explanation
 
     def save_model(self, filename):
@@ -196,8 +195,7 @@ class Classifier:
         model_data = {
             'model': self.model,
             'selected_features': self.selected_features,
-            'descriptor': self.descriptor,
-            'model_type': self.model_type,
+            'fingerprints': self.fingerprints, 
             'optimal_threshold': self.optimal_threshold
         }
         joblib.dump(model_data, filename)
@@ -207,5 +205,4 @@ class Classifier:
         self.model = model_data['model']
         self.selected_features = model_data['selected_features']     
         self.optimal_threshold = model_data['optimal_threshold']
-        self.descriptor = model_data["descriptor"]
-        self.model_type = model_data["model_type"]
+        self.fingerprints = model_data["fingerprints"] 
