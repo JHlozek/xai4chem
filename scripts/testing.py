@@ -39,7 +39,7 @@ if __name__ == "__main__":
     valid_features= descriptor.transform(smiles_valid)
 
     # Instantiate the Regressor/Classifier
-    trainer = Regressor(output_folder, descriptor=descriptor, algorithm='xgboost', k=100)
+    trainer = Regressor(output_folder, fingerprint='rdkit', k=100)#fingerprints='morgan' if MorganFingerprint
     
     # Train the model 
     trainer.fit(train_features, y_train) 
@@ -48,5 +48,5 @@ if __name__ == "__main__":
     trainer.evaluate(valid_features, smiles_valid, y_valid)
 
     # Explain the model     
-    trainer.explain(train_features, smiles_list=smiles_train)#, fingerprints='rdkit')    
+    trainer.explain(train_features, smiles_list=smiles_train)    
     
