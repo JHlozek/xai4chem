@@ -1,7 +1,8 @@
-# train.py
 import os
 import pandas as pd
 import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split
 from xai4chem.representations import DatamolDescriptor, RDKitDescriptor, MordredDescriptor, MorganFingerprint, RDKitFingerprint
 from xai4chem.supervised import Regressor, Classifier
@@ -58,9 +59,28 @@ def train(args):
     # Choose appropriate model
     if is_binary_classification: 
         print('...Classification.....\n', target.value_counts())
+        active_percentage = (target[target == 1].count() / len(target)) * 100
+        inactive_percentage = (target[target == 0].count()/ len(target)) * 100
+        plt.figure(figsize=(8, 6))
+        ax = sns.countplot(x=target)
+        ax.set_xticklabels(['Inactive', 'Active'])
+        for p in ax.patches:
+            ax.annotate(f'{p.get_height()}', (p.get_x() + p.get_width() / 2, p.get_height()), ha='center', va='bottom')
+        
+        plt.title(f'Value Counts of Actives ({active_percentage:.0f}%) and Inactives ({inactive_percentage:.0f}%)')
+        plt.ylabel('No. of Compounds')        
+        plt.savefig(os.path.join(args.output_dir, 'dataset_distribution.png'))
+        plt.close()
         model = Classifier(reports_dir, fingerprints=fingerprints, algorithm='catboost', k=max_features)
     else: 
         print('...Regression.....')
+        plt.figure(figsize=(8, 6))
+        sns.histplot(target, kde=True, color='blue')
+        plt.title('Distribution of Target Values')
+        plt.xlabel('Target Values')
+        plt.ylabel('No. of Compounds')
+        plt.savefig(os.path.join(args.output_dir, 'dataset_distribution.png'))
+        plt.close()
         model = Regressor(reports_dir, fingerprints=fingerprints, algorithm='catboost', k=max_features)
         
     # Train model
