@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import json
+import shap
 import optuna
 import xgboost
 import lightgbm
@@ -17,7 +18,7 @@ from flaml.default import preprocess_and_suggest_hyperparams
 import sys
 
 sys.path.append('.')
-from xai4chem.reporting import explain_model, regression_metrics
+from xai4chem.reporting import explain_model, explain_mol_features, regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall
 
 
 class Regressor:
@@ -26,6 +27,7 @@ class Regressor:
         self.n_trials = n_trials
         self.output_folder = output_folder
         self.model = None
+        self.explainer = None
         self.max_features = k
         self.selected_features = None
         self.fingerprints = fingerprints
@@ -162,7 +164,6 @@ class Regressor:
             raise ValueError("The model has not been trained.")
 
         y_pred = self.model_predict(X_valid_features)
-
         evaluation_metrics = regression_metrics(smiles_valid, y_valid, y_pred, self.output_folder)
 
         return evaluation_metrics
@@ -177,21 +178,49 @@ class Regressor:
         if self.model is None:
             raise ValueError("The model has not been trained.")
         X = X_features[self.selected_features]
-        explanation = explain_model(self.model, X, smiles_list, self.output_folder, self.fingerprints)
-        return explanation
+        self.explanation, self.explainer, self.scaler = explain_model(self.model, X, smiles_list, self.output_folder, self.fingerprints)
+
+    def explain_mol_atoms(self, X_features, smiles):
+        if self.model is None:
+            raise ValueError("The model has not been trained.")
+        if self.explainer is None:
+            raise ValueError("The model has not yet been explained.")
+        if self.fingerprints != "morgan":
+            raise ValueError("MorganFPs or rdkitFPs are required for substructure interpretability.")
+        X = X_features[self.selected_features]
+
+        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(self.explainer, X, smiles, fingerprints=self.fingerprints)
+        raw_atom_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints=self.fingerprints)
+        scaled_shapley_values = self.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
+        atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
+
+        highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + "_highlights.png"))
+        shap_values = self.explainer(X)
+        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall")
+        return atom_shapley_values
 
     def save_model(self, filename):
         if self.model is None:
             raise ValueError("The model has not been trained.")
+        if not os.path.exists(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
         model_data = {
             'model': self.model,
             'selected_features': self.selected_features,
             'fingerprints': self.fingerprints, 
         }
+        if self.explainer:
+            model_data['shapley_explainer'] = self.explainer
+            model_data['training_explanation'] = self.explanation
+            model_data['color_scaler'] = self.scaler
         joblib.dump(model_data, filename)
 
     def load_model(self, filename):
         model_data = joblib.load(filename)
         self.model = model_data['model']
         self.selected_features = model_data['selected_features']
-        self.fingerprints = model_data["fingerprints"] 
+        self.fingerprints = model_data["fingerprints"]
+        if 'shapley_explainer' in model_data:
+            self.explainer = model_data['shapley_explainer']
+            self.explanation = model_data['training_explanation']
+            self.scaler = model_data['color_scaler']

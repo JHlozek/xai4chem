@@ -28,6 +28,11 @@ class _Fingerprinter(object):
         v = rd.GetHashedMorganFingerprint(mol, radius=self.radius, nBits=self.nbits)
         return clip_sparse(v, self.nbits)
 
+    def calc_explain(self, mol):
+        bi = {}
+        v = rd.GetHashedMorganFingerprint(mol, radius=self.radius, nBits=self.nbits, bitInfo=bi)
+        return clip_sparse(v, self.nbits), bi
+
 
 def morgan_featurizer(smiles):
     d = _Fingerprinter()
@@ -37,6 +42,15 @@ def morgan_featurizer(smiles):
         X[i,:] = d.calc(mol)
     return X
 
+def morgan_explainer(smiles):
+    d = _Fingerprinter()
+    X = np.zeros((len(smiles), NBITS), dtype=np.int8)
+    bitInfo = []
+    for i, smi in enumerate(smiles):
+        mol = Chem.MolFromSmiles(smi)
+        X[i,:], bi = d.calc_explain(mol)
+        bitInfo.append(bi)
+    return X, bitInfo
 
 class MorganFingerprint(object):
 
@@ -51,6 +65,10 @@ class MorganFingerprint(object):
     def transform(self, smiles):
         X = morgan_featurizer(smiles)
         return pd.DataFrame(X, columns=self.features)
+
+    def explain_mols(self, smiles):
+        X, bitInfo = morgan_explainer(smiles)
+        return pd.DataFrame(X, columns=self.features), bitInfo
     
     def save(self, file_name):
         joblib.dump(self, file_name)

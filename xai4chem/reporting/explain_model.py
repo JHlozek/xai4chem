@@ -9,6 +9,7 @@ from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo
 from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+from sklearn.preprocessing import RobustScaler
 
 
 RADIUS = 3
@@ -24,6 +25,15 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
     explainer = shap.TreeExplainer(model)
     explanation = explainer(X)
 
+    #scale SHAP values per atom
+    raw_scores = []
+    for idx, smiles in enumerate(smiles_list):
+        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X.iloc[[idx]], smiles, fingerprints)
+        tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
+        raw_scores += list(tmp.values())
+    scaler = RobustScaler()
+    scaler.fit(np.array(raw_scores).reshape(-1,1))
+
     #Samples
     predictions = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else model.predict(X) 
     percentiles = [0, 25, 50, 75, 100]
@@ -34,55 +44,78 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
 
     for i, idx in enumerate(sample_indices):
         smiles = smiles_list[idx] if smiles_list is not None else f'Sample {idx}'
-        plot_waterfall(explanation, idx, smiles, output_folder, percentiles[i])
+        plot_waterfall(explanation, idx, smiles, output_folder, f"interpretability_sample_p{percentiles[i]}.png")
+
+        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X.iloc[[idx]], smiles, fingerprints)
+        atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
+        scaled_shapley_values = scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
+        atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
+
+        draw_top_features(bit_info, valid_top_bits, smiles,
+                    os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
+
+        highlight_and_draw_molecule(atom_shapley_values, smiles,
+                    os.path.join(output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
 
     save_shap_values_to_csv(explanation, X, X.columns, output_folder)
     plot_summary_plots(explanation, output_folder)
     plot_scatter_plots(explanation, X.columns, output_folder)
 
-    if smiles_list is not None and fingerprints is not None:
-        for i, idx in enumerate(sample_indices):
-            smiles = smiles_list[idx]
-            mol = Chem.MolFromSmiles(smiles)
-            if mol:
-                sample_shap_values = explanation[idx].values
-                feature_names = X.columns
-                valid_top_bits = []
-                
-                if fingerprints == 'morgan':
-                    bit_info = {}
-                    AllChem.GetHashedMorganFingerprint(mol, radius=RADIUS, nBits=NBITS, bitInfo=bit_info)
-                    bit_shap_values = {}
-                    for bit_idx, feature_name in enumerate(feature_names): 
-                        bit = int(feature_name.split('-')[1])
-                        if 0 <= bit_idx < len(sample_shap_values):
-                            bit_shap_values[bit] = sample_shap_values[bit_idx]
+    return explanation, explainer, scaler
 
-                    valid_top_bits = [bit for bit in sorted(bit_shap_values.keys(), key=lambda b: abs(bit_shap_values[b]),
-                                                            reverse=True) if bit in bit_info][:5]
+def explain_mol_features(explainer, X, smiles, fingerprints=None):
+    if smiles is not None and fingerprints is not None:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol:
+            sample_shap_values = explainer.shap_values(X)[0]
+            feature_names = X.columns
 
-                elif fingerprints == 'rdkit': 
-                    bit_info = {}
-                    Chem.RDKFingerprint(mol, minPath=_MIN_PATH_LEN, maxPath=_MAX_PATH_LEN, fpSize=NBITS, bitInfo=bit_info)
-                    
-                    bit_shap_values = {}
-                    for bit_idx, feature_name in enumerate(feature_names): 
-                        bit = int(feature_name.split('-')[1])
-                        if 0 <= bit_idx < len(sample_shap_values):
-                            bit_shap_values[bit] = sample_shap_values[bit_idx]
+            bit_info = {}
+            bit_shap_values = {}
+            if fingerprints == 'morgan':
+                AllChem.GetHashedMorganFingerprint(mol, radius=RADIUS, nBits=NBITS, bitInfo=bit_info)
 
-                    valid_top_bits = [bit for bit in sorted(bit_shap_values.keys(), key=lambda b: abs(bit_shap_values[b]),
-                                                            reverse=True) if bit in bit_info][:5]
+            elif fingerprints == 'rdkit':
+                Chem.RDKFingerprint(mol, minPath=_MIN_PATH_LEN, maxPath=_MAX_PATH_LEN, fpSize=NBITS, bitInfo=bit_info)
 
-                draw_top_features(mol, bit_info, valid_top_bits, smiles,
-                                        os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
+            for bit_idx, feature_name in enumerate(feature_names):
+                bit = int(feature_name.split('-')[1])
+                if 0 <= bit_idx < len(sample_shap_values):
+                    bit_shap_values[bit] = sample_shap_values[bit_idx]
 
-                highlight_and_draw_molecule(mol, bit_info, valid_top_bits, bit_shap_values, smiles,
-                                                os.path.join(output_folder,
-                                                             f"sample_p{percentiles[i]}_shap_highlights.png"), fingerprints)
+            valid_top_bits = [bit for bit in sorted(bit_shap_values.keys(), key=lambda b: abs(bit_shap_values[b]),
+                                                    reverse=True) if bit in bit_info][:5]
 
-    return explanation
+            return bit_info, valid_top_bits, bit_shap_values
 
+def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
+    if fingerprints == "morgan":
+        mol = Chem.MolFromSmiles(smiles)
+        atom_shapley_scores = {}
+        for bit in bit_info:
+            if bit in bit_shap_values:
+                bit_shap_score = bit_shap_values[bit]
+            else:
+                continue
+
+            for centres in bit_info[bit]:
+                env = Chem.FindAtomEnvironmentOfRadiusN(mol, centres[1], centres[0])
+                atoms = set([centres[0]])
+                bonds = set([])
+                for bond in env:
+                    atoms.add(mol.GetBondWithIdx(bond).GetBeginAtomIdx())
+                    atoms.add(mol.GetBondWithIdx(bond).GetEndAtomIdx())
+                    bonds.add(bond)
+                atoms = list(atoms)
+                bonds = list(bonds)
+
+                for atom in atoms:
+                    if atom not in atom_shapley_scores:
+                        atom_shapley_scores[atom] = bit_shap_score
+                    else:
+                        atom_shapley_scores[atom] += bit_shap_score
+        #scale values with the MinMaxScaler before mapping to colours
+        return atom_shapley_scores
 
 def create_output_folder(output_folder):
     """Create output folder if it does not exist."""
@@ -97,11 +130,11 @@ def save_shap_values_to_csv(explanation, X, feature_names, output_folder):
     combined_df.to_csv(os.path.join(output_folder, 'shap_values.csv'), index=False)
 
 
-def plot_waterfall(explanation, idx, smiles, output_folder, percentiles):
+def plot_waterfall(explanation, idx, smiles, output_folder, file_name):
     """Create a waterfall plot for a given sample."""
     shap.waterfall_plot(explanation[idx], max_display=15, show=False)
     plt.title(f"Molecule: {smiles}")
-    plt.savefig(os.path.join(output_folder, f"interpretability_sample_p{percentiles}.png"), bbox_inches='tight')
+    plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight')
     plt.close()
 
 
@@ -127,11 +160,12 @@ def plot_scatter_plots(explanation, feature_names, output_folder):
         plt.close()
 
 
-def draw_top_features(mol, bit_info, valid_top_bits, smiles, output_path, fingerprints):
+def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprints):
     """Draw and save top features(bits)."""
     list_bits = []
     legends = []
 
+    mol = Chem.MolFromSmiles(smiles)
     for x in valid_top_bits:
             for i in range(len(bit_info[x])):
                 list_bits.append((mol, x, bit_info, i))
@@ -147,50 +181,31 @@ def draw_top_features(mol, bit_info, valid_top_bits, smiles, output_path, finger
 
     add_title_to_image(output_path, f"Top 5 features({fingerprints}-fps) for: {smiles}")
 
-def highlight_and_draw_molecule(mol, bit_info, valid_top_bits, bit_shap_values, smiles, output_path, fingerprints):
-    highlights, atom_colors, bond_highlights, bond_colors = set(), {}, set(), {}
 
-    def add_highlights(atoms, bonds, color):
-        highlights.update(atoms)
-        bond_highlights.update(bonds)
-        for atom in atoms:
-            atom_colors[atom] = color
-        for bond in bonds:
-            bond_colors[bond] = color
-    # print('smiles', smiles, 'bits: ', valid_top_bits)
-    for bit in valid_top_bits:
-        shap_value = bit_shap_values.get(bit, 0)
-        color = (1, 0, 0, 0.6) if shap_value > 0 else (0, 0, 1, 0.6)
-        bit_atoms = bit_info.get(bit)
+def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
+    for atom in atoms_shapley_dict:
+        if atoms_shapley_dict[atom] > 1:
+            atoms_shapley_dict[atom] = 1
+        elif atoms_shapley_dict[atom] < -1:
+            atoms_shapley_dict[atom] = -1
 
-        if fingerprints == 'morgan':
-            atom_indices = [item for sublist in bit_atoms for item in sublist]
-            for atom_idx in atom_indices:
-                if isinstance(atom_idx, int):
-                    env = Chem.FindAtomEnvironmentOfRadiusN(mol, RADIUS, atom_idx)
-                    atoms, bonds = set(), set()
-                    for bidx in env:
-                        bond = mol.GetBondWithIdx(bidx)
-                        atoms.update([bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()])
-                        bonds.add(bidx)
-                    add_highlights(atoms, bonds, color)
-                        
-        elif fingerprints == 'rdkit':
-            for env in bit_atoms:  
-                atoms, bonds = set(), set()                    
-                for idx in env:
-                    atoms.add(mol.GetBondWithIdx(idx).GetBeginAtomIdx())
-                    atoms.add(mol.GetBondWithIdx(idx).GetEndAtomIdx())
-                    bonds.add(idx) 
-                add_highlights(atoms, bonds, color)
+    min_val = min(atoms_shapley_dict.values())
+    max_val = max(atoms_shapley_dict.values())
 
+    atom_colors = {}
+    colormap = plt.cm.get_cmap("RdBu")
+    norm = plt.Normalize(min_val, max_val)
+    for atom in atoms_shapley_dict:
+        c = colormap(norm(atoms_shapley_dict[atom]))
+        c = (c[0], c[1], c[2], 0.6)
+        atom_colors[atom] = c
+
+    mol = Chem.MolFromSmiles(smiles)
     drawer = MolDraw2DCairo(500, 500)
     drawer.drawOptions().useBWAtomPalette()
     rdMolDraw2D.PrepareAndDrawMolecule(
-        drawer, mol, highlightAtoms=list(highlights), 
-        highlightAtomColors=atom_colors, highlightBonds=list(bond_highlights), 
-        highlightBondColors=bond_colors
-    )
+        drawer, mol, highlightAtoms=list(atom_colors.keys()),
+        highlightAtomColors=atom_colors)
     drawer.FinishDrawing()
     drawer.WriteDrawingText(output_path)
     add_title_to_image(output_path, f"{smiles}")
