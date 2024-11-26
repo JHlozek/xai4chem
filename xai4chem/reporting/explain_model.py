@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
+from rdkit.Geometry import Point2D
 from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo
 from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
@@ -101,14 +102,7 @@ def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
             for centres in bit_info[bit]:
                 env = Chem.FindAtomEnvironmentOfRadiusN(mol, centres[1], centres[0])
                 atoms = set([centres[0]])
-                bonds = set([])
-                for bond in env:
-                    atoms.add(mol.GetBondWithIdx(bond).GetBeginAtomIdx())
-                    atoms.add(mol.GetBondWithIdx(bond).GetEndAtomIdx())
-                    bonds.add(bond)
                 atoms = list(atoms)
-                bonds = list(bonds)
-
                 for atom in atoms:
                     if atom not in atom_shapley_scores:
                         atom_shapley_scores[atom] = bit_shap_score
@@ -192,20 +186,37 @@ def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
     min_val = min(atoms_shapley_dict.values())
     max_val = max(atoms_shapley_dict.values())
 
+    #Scale and color atoms
     atom_colors = {}
     colormap = plt.cm.get_cmap("RdBu")
     norm = plt.Normalize(min_val, max_val)
     for atom in atoms_shapley_dict:
         c = colormap(norm(atoms_shapley_dict[atom]))
-        c = (c[0], c[1], c[2], 0.6)
+        c = (c[0], c[1], c[2], 0.7)
         atom_colors[atom] = c
 
+    # Get the atom positions for drawing (this requires 2D coordinates)
     mol = Chem.MolFromSmiles(smiles)
+    AllChem.Compute2DCoords(mol)
+
+    #Color bonds by adjacent atoms
+    bond_colors = {}
+    for bond in mol.GetBonds():
+        atom1 = bond.GetBeginAtom()
+        atom2 = bond.GetEndAtom()
+        color_steps = 3
+        if atom1.GetIdx() not in atom_colors or atom2.GetIdx() not in atom_colors:
+            bond_colors[bond.GetIdx()] = (1,1,1,0.7)
+        else:
+            color1 = atom_colors[atom1.GetIdx()]
+            color2 = atom_colors[atom2.GetIdx()]
+            color_avg = tuple((color1[i] + color2[i])/2 for i in range(len(color1)))
+            bond_colors[bond.GetIdx()] = color_avg
+
     drawer = MolDraw2DCairo(500, 500)
     drawer.drawOptions().useBWAtomPalette()
-    rdMolDraw2D.PrepareAndDrawMolecule(
-        drawer, mol, highlightAtoms=list(atom_colors.keys()),
-        highlightAtomColors=atom_colors)
+    drawer.DrawMolecule(mol, highlightAtoms=list(atom_colors.keys()), highlightAtomColors=atom_colors,
+                        highlightBonds=list(bond_colors.keys()), highlightBondColors=bond_colors)
     drawer.FinishDrawing()
     drawer.WriteDrawingText(output_path)
     add_title_to_image(output_path, f"{smiles}")

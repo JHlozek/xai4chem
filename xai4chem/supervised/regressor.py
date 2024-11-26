@@ -209,7 +209,7 @@ class Regressor:
             'selected_features': self.selected_features,
             'fingerprints': self.fingerprints, 
         }
-        if self.explainer:
+        if self.explainer is not None:
             model_data['shapley_explainer'] = self.explainer
             model_data['training_explanation'] = self.explanation
             model_data['color_scaler'] = self.scaler
