@@ -178,9 +178,9 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
 
 def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
     for atom in atoms_shapley_dict:
-        if atoms_shapley_dict[atom] > 1:
+        if atoms_shapley_dict[atom] > 1.0:
             atoms_shapley_dict[atom] = 1
-        elif atoms_shapley_dict[atom] < -1:
+        elif atoms_shapley_dict[atom] < -1.0:
             atoms_shapley_dict[atom] = -1
 
     min_val = min(atoms_shapley_dict.values())
@@ -201,17 +201,16 @@ def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
 
     #Color bonds by adjacent atoms
     bond_colors = {}
+    #color_steps = 3
     for bond in mol.GetBonds():
         atom1 = bond.GetBeginAtom()
         atom2 = bond.GetEndAtom()
-        color_steps = 3
         if atom1.GetIdx() not in atom_colors or atom2.GetIdx() not in atom_colors:
             bond_colors[bond.GetIdx()] = (1,1,1,0.7)
+        elif atoms_shapley_dict[atom1.GetIdx()] >= atoms_shapley_dict[atom2.GetIdx()]:
+            bond_colors[bond.GetIdx()] = atom_colors[atom1.GetIdx()]
         else:
-            color1 = atom_colors[atom1.GetIdx()]
-            color2 = atom_colors[atom2.GetIdx()]
-            color_avg = tuple((color1[i] + color2[i])/2 for i in range(len(color1)))
-            bond_colors[bond.GetIdx()] = color_avg
+            bond_colors[bond.GetIdx()] = atom_colors[atom2.GetIdx()]
 
     drawer = MolDraw2DCairo(500, 500)
     drawer.drawOptions().useBWAtomPalette()

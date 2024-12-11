@@ -26,6 +26,8 @@ class Regressor:
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
+        if not os.path.exists(self.output_folder):
+            os.makedirs(self.output_folder)
         self.model = None
         self.explainer = None
         self.max_features = k
@@ -162,7 +164,6 @@ class Regressor:
     def evaluate(self, X_valid_features, smiles_valid, y_valid):
         if self.model is None:
             raise ValueError("The model has not been trained.")
-
         y_pred = self.model_predict(X_valid_features)
         evaluation_metrics = regression_metrics(smiles_valid, y_valid, y_pred, self.output_folder)
 
