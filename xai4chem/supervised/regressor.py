@@ -18,11 +18,12 @@ from flaml.default import preprocess_and_suggest_hyperparams
 import sys
 
 sys.path.append('.')
+from xai4chem import MorganFingerprint, RDKitDescriptor, DatamolDescriptor
 from xai4chem.reporting import explain_model, explain_mol_features, regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall
 
 
 class Regressor:
-    def __init__(self, output_folder, fingerprints=None, algorithm='xgboost', n_trials=500, k=None):
+    def __init__(self, output_folder, fingerprints="morgan", algorithm='xgboost', n_trials=500, k=None):
         self.algorithm = algorithm
         self.n_trials = n_trials
         self.output_folder = output_folder
@@ -115,10 +116,13 @@ class Regressor:
         preds = model.predict(X_valid)
         mae = metrics.mean_absolute_error(y_valid, preds)
         return mae
+        
+    def _featurize_smiles(self, smiles_list):
+        smiles_transformed = self.descriptor.transform(smiles_list)
+        return smiles_transformed
 
     def fit(self, X_train, y_train, default_params=True):
         self._select_features(X_train, y_train)
-        # print(f'Selected features: {self.selected_features}')
         X_train = X_train[self.selected_features]
         if self.algorithm == 'xgboost':
             if not default_params:
@@ -175,22 +179,30 @@ class Regressor:
         X = X[list(self.selected_features)]
         return self.model.predict(X)
 
-    def explain(self, X_features, smiles_list=None):
+    def explain(self, smiles_list):
         if self.model is None:
             raise ValueError("The model has not been trained.")
-        X = X_features[self.selected_features]
+        if self.fingerprints == "morgan":
+            self.descriptor = MorganFingerprint()
+        elif self.fingerprints == "datamol":
+            self.descriptor = DatamolDescriptor()
+        self.descriptor.fit(smiles_list)
+        X = self._featurize_smiles(smiles_list)
+        X = X[self.selected_features]
         self.explanation, self.explainer, self.scaler = explain_model(self.model, X, smiles_list, self.output_folder, self.fingerprints)
 
-    def explain_mol_atoms(self, X_features, smiles):
+    def explain_mol_atoms(self, smiles, atomInfo=False):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         if self.explainer is None:
             raise ValueError("The model has not yet been explained.")
         if self.fingerprints != "morgan":
             raise ValueError("MorganFPs or rdkitFPs are required for substructure interpretability.")
-        X = X_features[self.selected_features]
+        X = self._featurize_smiles([smiles])
+        X = X[self.selected_features]
+        X_cols = X.columns
 
-        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(self.explainer, X, smiles, fingerprints=self.fingerprints)
+        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(self.explainer, X, smiles, X_cols, fingerprints=self.fingerprints)
         raw_atom_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints=self.fingerprints)
         scaled_shapley_values = self.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
         atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
@@ -198,7 +210,10 @@ class Regressor:
         highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + "_highlights.png"))
         shap_values = self.explainer(X)
         plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall")
-        return atom_shapley_values
+        if atomInfo:
+            return atom_shapley_values
+        else:
+            return None
 
     def save_model(self, filename):
         if self.model is None:

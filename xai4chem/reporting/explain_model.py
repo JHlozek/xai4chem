@@ -3,14 +3,16 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import datamol as dm
 from rdkit import Chem
-from rdkit.Chem import AllChem, Draw
+from rdkit.Chem import AllChem, Draw, rdFingerprintGenerator
 from rdkit.Geometry import Point2D
 from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo
 from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from sklearn.preprocessing import RobustScaler
+import xgboost as xgb
 
 
 RADIUS = 3
@@ -22,54 +24,61 @@ _MAX_PATH_LEN = 7
 def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
     print('Explaining model')
     create_output_folder(output_folder)
-
+    
+    X_cols = X.columns.tolist()
+    X_matrix = xgb.DMatrix(X)
+    
     explainer = shap.TreeExplainer(model)
     explanation = explainer(X)
-
-    #scale SHAP values per atom
-    raw_scores = []
-    for idx, smiles in enumerate(smiles_list):
-        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X.iloc[[idx]], smiles, fingerprints)
-        tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
-        raw_scores += list(tmp.values())
-    scaler = RobustScaler()
-    scaler.fit(np.array(raw_scores).reshape(-1,1))
+    explanation.feature_names = X_cols
 
     #Samples
-    predictions = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else model.predict(X) 
+    predictions = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else model.predict(X)
     percentiles = [0, 25, 50, 75, 100]
     percentile_values = np.percentile(predictions, percentiles)
 
     # Indices of the predictions closest to the percentile values
     sample_indices = [np.argmin(np.abs(predictions - value)) for value in percentile_values]
 
-    for i, idx in enumerate(sample_indices):
-        smiles = smiles_list[idx] if smiles_list is not None else f'Sample {idx}'
-        plot_waterfall(explanation, idx, smiles, output_folder, f"interpretability_sample_p{percentiles[i]}.png")
+    if fingerprints == "morgan":
+        #scale SHAP values per atom
+        raw_scores = []
+        for idx, smiles in enumerate(smiles_list):
+            bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
+            tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
+            raw_scores += list(tmp.values())
+        scaler = RobustScaler()
+        scaler.fit(np.array(raw_scores).reshape(-1,1))
+        
+        for i, idx in enumerate(sample_indices):
+            smiles = smiles_list[idx] if smiles_list is not None else f'Sample {idx}'
+            plot_waterfall(explanation, idx, smiles, output_folder, f"interpretability_sample_p{percentiles[i]}.png")
+    
+            bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
+            atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
+            scaled_shapley_values = scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
+            atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
+    
+            draw_top_features(bit_info, valid_top_bits, smiles,
+                        os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
+    
+            highlight_and_draw_molecule(atom_shapley_values, smiles,
+                        os.path.join(output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
+    else:
+        scaler = None
 
-        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X.iloc[[idx]], smiles, fingerprints)
-        atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
-        scaled_shapley_values = scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
-        atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
-
-        draw_top_features(bit_info, valid_top_bits, smiles,
-                    os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
-
-        highlight_and_draw_molecule(atom_shapley_values, smiles,
-                    os.path.join(output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
-
-    save_shap_values_to_csv(explanation, X, X.columns, output_folder)
+    
+    #save_shap_values_to_csv(explanation, X, X_cols, output_folder)
     plot_summary_plots(explanation, output_folder)
-    plot_scatter_plots(explanation, X.columns, output_folder)
+    plot_scatter_plots(explanation, X_cols, output_folder)
 
     return explanation, explainer, scaler
 
-def explain_mol_features(explainer, X, smiles, fingerprints=None):
+def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None):
     if smiles is not None and fingerprints is not None:
         mol = Chem.MolFromSmiles(smiles)
         if mol:
             sample_shap_values = explainer.shap_values(X)[0]
-            feature_names = X.columns
 
             bit_info = {}
             bit_shap_values = {}
@@ -116,12 +125,12 @@ def create_output_folder(output_folder):
     os.makedirs(output_folder, exist_ok=True)
 
 
-def save_shap_values_to_csv(explanation, X, feature_names, output_folder):
+def save_shap_values_to_csv(explanation, X, feature_names, output_folder, fingerprints='morgan'):
     """Save SHAP values and features to a CSV file."""
     shap_df = pd.DataFrame(explanation.values, columns=[f'SHAP_{name}' for name in feature_names])
     data_df = pd.DataFrame(X, columns=feature_names)
     combined_df = pd.concat([data_df, shap_df], axis=1)
-    combined_df.to_csv(os.path.join(output_folder, 'shap_values.csv'), index=False)
+    combined_df.to_csv(os.path.join(output_folder, 'shap_values-' + fingerprints + '.csv'), index=False)
 
 
 def plot_waterfall(explanation, idx, smiles, output_folder, file_name):
@@ -149,6 +158,7 @@ def plot_scatter_plots(explanation, feature_names, output_folder):
     top_features = np.argsort(-np.abs(shap_values).mean(0))[:5]
 
     for feature in top_features:
+        explanation.feature_names = feature_names
         shap.plots.scatter(explanation[:, feature], show=False)
         plt.savefig(os.path.join(output_folder, f"interpretability_{feature_names[feature]}.png"), bbox_inches='tight')
         plt.close()
