@@ -18,7 +18,7 @@ from flaml.default import preprocess_and_suggest_hyperparams
 import sys
 
 sys.path.append('.')
-from xai4chem import MorganFingerprint, RDKitDescriptor, DatamolDescriptor
+from xai4chem import MorganFingerprint, RDKitDescriptor, DatamolDescriptor, AccFgFingerprint
 from xai4chem.reporting import explain_model, explain_mol_features, regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall
 
 
@@ -186,6 +186,8 @@ class Regressor:
             self.descriptor = MorganFingerprint()
         elif self.fingerprints == "datamol":
             self.descriptor = DatamolDescriptor()
+        elif self.fingerprints == "accfg":
+            self.descriptor = AccFgFingerprint()
         self.descriptor.fit(smiles_list)
         X = self._featurize_smiles(smiles_list)
         X = X[self.selected_features]
@@ -196,7 +198,7 @@ class Regressor:
             raise ValueError("The model has not been trained.")
         if self.explainer is None:
             raise ValueError("The model has not yet been explained.")
-        if self.fingerprints != "morgan":
+        if self.fingerprints != "morgan" and self.fingerprints != "accfg":
             raise ValueError("MorganFPs or rdkitFPs are required for substructure interpretability.")
         X = self._featurize_smiles([smiles])
         X = X[self.selected_features]
@@ -207,9 +209,18 @@ class Regressor:
         scaled_shapley_values = self.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
         atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
 
-        highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + "_highlights.png"))
+        highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + "_highlights_accfg.png"))
         shap_values = self.explainer(X)
-        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall")
+        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_accfg")
+        
+        """
+        if self.fingerprints == "morgan":
+            atom_raw_values_from_fg = explain_mol_groups(self.explainer, X, smiles, fingerprints=self.fingerprints)
+            scaled_shapley_values_from_fg = self.scaler.transform(np.array(list(atom_raw_values_from_fg.values())).reshape(-1, 1)).flatten()
+            atom_shapley_values_from_fg = {k: scaled_shapley_values_from_fg[i] for i, k in enumerate(atom_raw_values_from_fg)}
+        
+            highlight_and_draw_molecule(atom_shapley_values_from_fg, smiles, os.path.join(self.output_folder, smiles + "_highlights_fg.png"))
+        """
         if atomInfo:
             return atom_shapley_values
         else:

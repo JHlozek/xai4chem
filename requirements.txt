@@ -8,11 +8,9 @@ optuna==3.5.0
 mordred==1.2.0
 pandas<=2.1
 matplotlib==3.8.3
-featurewiz==0.5.7
+featurewiz==0.6.0
 tensorflow==2.16.1
 flaml==2.1.2
 imblearn
 pydantic
-aiohttp 
-async-timeout
-dask[dataframe]
+aiohttp

@@ -11,9 +11,9 @@ from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo
 from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
 import xgboost as xgb
-
+from xai4chem.representations.accfg_fps import AccFgFingerprint
 
 RADIUS = 3
 NBITS = 2048
@@ -40,15 +40,16 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
     # Indices of the predictions closest to the percentile values
     sample_indices = [np.argmin(np.abs(predictions - value)) for value in percentile_values]
 
-    if fingerprints == "morgan":
+    if fingerprints == "morgan" or fingerprints == "accfg":
         #scale SHAP values per atom
         raw_scores = []
         for idx, smiles in enumerate(smiles_list):
             bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
             tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
             raw_scores += list(tmp.values())
-        scaler = RobustScaler()
+        scaler = MinMaxScaler(feature_range=(-1,1))
         scaler.fit(np.array(raw_scores).reshape(-1,1))
+
         
         for i, idx in enumerate(sample_indices):
             smiles = smiles_list[idx] if smiles_list is not None else f'Sample {idx}'
@@ -58,12 +59,14 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
             atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
             scaled_shapley_values = scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
             atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
-    
-            draw_top_features(bit_info, valid_top_bits, smiles,
-                        os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
-    
+            
+            if fingerprints == "morgan":
+                draw_top_features(bit_info, valid_top_bits, smiles,
+                            os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
+            # add feature drawing for AccFG fingerprints
             highlight_and_draw_molecule(atom_shapley_values, smiles,
                         os.path.join(output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
+
     else:
         scaler = None
 
@@ -76,7 +79,7 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
 
 def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None):
     if smiles is not None and fingerprints is not None:
-        mol = Chem.MolFromSmiles(smiles)
+        mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
         if mol:
             sample_shap_values = explainer.shap_values(X)[0]
 
@@ -84,10 +87,12 @@ def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None)
             bit_shap_values = {}
             if fingerprints == 'morgan':
                 AllChem.GetHashedMorganFingerprint(mol, radius=RADIUS, nBits=NBITS, bitInfo=bit_info)
-
+                
+            elif fingerprints == 'accfg':
+                fp, bit_info = AccFgFingerprint().explain_mols(smiles)
             elif fingerprints == 'rdkit':
                 Chem.RDKFingerprint(mol, minPath=_MIN_PATH_LEN, maxPath=_MAX_PATH_LEN, fpSize=NBITS, bitInfo=bit_info)
-
+            
             for bit_idx, feature_name in enumerate(feature_names):
                 bit = int(feature_name.split('-')[1])
                 if 0 <= bit_idx < len(sample_shap_values):
@@ -96,12 +101,25 @@ def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None)
             valid_top_bits = [bit for bit in sorted(bit_shap_values.keys(), key=lambda b: abs(bit_shap_values[b]),
                                                     reverse=True) if bit in bit_info][:5]
 
-            return bit_info, valid_top_bits, bit_shap_values
+            return bit_info, valid_top_bits, bit_shap_values               
 
 def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
+    mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
+    atom_shapley_scores = {}
+    if fingerprints == "accfg":
+        for bit in bit_info:
+            if bit in bit_shap_values:
+                bit_shap_score = bit_shap_values[bit]
+            else:
+                continue
+        
+            for atom in bit_info[bit]:
+                if atom[0] not in atom_shapley_scores:
+                    atom_shapley_scores[atom[0]] = bit_shap_score
+                else:
+                    atom_shapley_scores[atom[0]] += bit_shap_score
+        
     if fingerprints == "morgan":
-        mol = Chem.MolFromSmiles(smiles)
-        atom_shapley_scores = {}
         for bit in bit_info:
             if bit in bit_shap_values:
                 bit_shap_score = bit_shap_values[bit]
@@ -117,8 +135,9 @@ def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
                         atom_shapley_scores[atom] = bit_shap_score
                     else:
                         atom_shapley_scores[atom] += bit_shap_score
-        #scale values with the MinMaxScaler before mapping to colours
-        return atom_shapley_scores
+                        
+    #scale values with the MinMaxScaler before mapping to colours
+    return atom_shapley_scores
 
 def create_output_folder(output_folder):
     """Create output folder if it does not exist."""
@@ -169,7 +188,7 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
     list_bits = []
     legends = []
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
     for x in valid_top_bits:
             for i in range(len(bit_info[x])):
                 list_bits.append((mol, x, bit_info, i))
@@ -206,7 +225,7 @@ def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
         atom_colors[atom] = c
 
     # Get the atom positions for drawing (this requires 2D coordinates)
-    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
     AllChem.Compute2DCoords(mol)
 
     #Color bonds by adjacent atoms
