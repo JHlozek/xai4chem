@@ -127,7 +127,7 @@ class Regressor:
         if self.algorithm == 'xgboost':
             if not default_params:
                 study = optuna.create_study(direction="minimize")
-                study.optimize(lambda trial: self._optimize_xgboost(trial, X_train, y_train), n_trials=self.n_trials)
+                study.optimize(lambda trial: self._optimize_xgboost(trial, X_train.values, y_train), n_trials=self.n_trials)
                 best_params = study.best_params
                 print('Best parameters for XGBoost:', best_params)
                 self.model = xgboost.XGBRegressor(**best_params)
@@ -140,7 +140,7 @@ class Regressor:
                     y_transformed,
                 ) = estimator.suggest_hyperparams(X_train, y_train)
                 self.model = xgboost.XGBRegressor(**hyperparams)
-            self.model.fit(X_train, y_train)
+            self.model.fit(X_train.values, y_train)
         elif self.algorithm == 'catboost':
             if not default_params:
                 study = optuna.create_study(direction="minimize")
@@ -211,16 +211,8 @@ class Regressor:
 
         highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + "_highlights_accfg.png"))
         shap_values = self.explainer(X)
-        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_accfg")
+        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_accfg", self.fingerprints)
         
-        """
-        if self.fingerprints == "morgan":
-            atom_raw_values_from_fg = explain_mol_groups(self.explainer, X, smiles, fingerprints=self.fingerprints)
-            scaled_shapley_values_from_fg = self.scaler.transform(np.array(list(atom_raw_values_from_fg.values())).reshape(-1, 1)).flatten()
-            atom_shapley_values_from_fg = {k: scaled_shapley_values_from_fg[i] for i, k in enumerate(atom_raw_values_from_fg)}
-        
-            highlight_and_draw_molecule(atom_shapley_values_from_fg, smiles, os.path.join(self.output_folder, smiles + "_highlights_fg.png"))
-        """
         if atomInfo:
             return atom_shapley_values
         else:

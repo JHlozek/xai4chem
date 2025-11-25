@@ -10,16 +10,21 @@ from xai4chem.tools.accfg.main import AccFG
 REF_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REF_PATH = os.path.join(REF_PATH, "tools", "accfg")
 
-def accfg_featurizer(smi_list):
-    afg = AccFG()
+def ref_features():
     df = pd.read_csv(os.path.join(REF_PATH, "fgs_all.csv"))
     fgs_ref = {fg : i for i, fg in enumerate(df["Functional Group"].tolist())}
+    return fgs_ref
+
+def accfg_featurizer(smi_list):
+    afg = AccFG()
+    fgs_ref = ref_features()
     
     arr = np.zeros((len(smi_list), len(fgs_ref)))
     for i, s in enumerate(smi_list):
         fgs = afg.run(s, show_atoms=True)
         for f in fgs.keys():
-            arr[i][fgs_ref[f]] += 1
+            for group in fgs[f]:
+                arr[i][fgs_ref[f]] += 1
     return arr
 
 
@@ -27,8 +32,7 @@ def accfg_explainer(smi_list):
     if type(smi_list) is not list:
         smi_list = [smi_list]
     afg = AccFG()
-    df = pd.read_csv(os.path.join(REF_PATH, "fgs_all.csv"))
-    fgs_ref = {fg : i for i, fg in enumerate(df["Functional Group"].tolist())}
+    fgs_ref = ref_features()
 
     arr = np.zeros((len(smi_list), len(fgs_ref)))
     bitInfo = []
@@ -36,13 +40,14 @@ def accfg_explainer(smi_list):
         fgs = afg.run(s, show_atoms=True)
         fgs_list = {}
         for f in fgs.keys():
-            arr[i][fgs_ref[f]] += 1
             atoms = ()
-            for val in fgs[f][0]:
-                atoms = atoms + ((val,),)
+            for group in fgs[f]:
+                arr[i][fgs_ref[f]] += 1
+                for val in group:
+                    atoms = atoms + ((val,),)
             fgs_list[fgs_ref[f]] = atoms
         bitInfo.append(fgs_list)
-    return arr, fgs_list
+    return arr, bitInfo
 
 class AccFgFingerprint(object):
 
@@ -60,7 +65,10 @@ class AccFgFingerprint(object):
 
     def explain_mols(self, smiles):
         X, bitInfo = accfg_explainer(smiles)
-        return pd.DataFrame(X, columns=["fp-{0}".format(i) for i in range(X.shape[1])]), bitInfo
+        return pd.DataFrame(X, columns=["fp-{0}".format(i) for i in range(X.shape[1])]), bitInfo[0]
+    
+    def get_ref_features(self):
+        return ref_features()
     
     def save(self, file_name):
         joblib.dump(self, file_name)

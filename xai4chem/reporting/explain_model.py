@@ -1,5 +1,6 @@
 import shap
 import os
+import copy
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,7 +12,8 @@ from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo
 from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from sklearn.preprocessing import RobustScaler, MinMaxScaler
+from matplotlib.colors import LinearSegmentedColormap
+from sklearn.preprocessing import RobustScaler, MinMaxScaler, MaxAbsScaler
 import xgboost as xgb
 from xai4chem.representations.accfg_fps import AccFgFingerprint
 
@@ -24,14 +26,14 @@ _MAX_PATH_LEN = 7
 def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
     print('Explaining model')
     create_output_folder(output_folder)
-    
+        
     X_cols = X.columns.tolist()
     X_matrix = xgb.DMatrix(X)
     
     explainer = shap.TreeExplainer(model)
     explanation = explainer(X)
     explanation.feature_names = X_cols
-
+    
     #Samples
     predictions = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else model.predict(X)
     percentiles = [0, 25, 50, 75, 100]
@@ -47,13 +49,13 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
             bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
             tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
             raw_scores += list(tmp.values())
-        scaler = MinMaxScaler(feature_range=(-1,1))
+        scaler = MaxAbsScaler()
         scaler.fit(np.array(raw_scores).reshape(-1,1))
 
         
         for i, idx in enumerate(sample_indices):
             smiles = smiles_list[idx] if smiles_list is not None else f'Sample {idx}'
-            plot_waterfall(explanation, idx, smiles, output_folder, f"interpretability_sample_p{percentiles[i]}.png")
+            plot_waterfall(explanation, idx, smiles, output_folder, f"interpretability_sample_p{percentiles[i]}.png", fingerprints)
     
             bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
             atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
@@ -70,15 +72,22 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
     else:
         scaler = None
 
+    if fingerprints == "accfg":
+        ref_features = list(AccFgFingerprint().get_ref_features().keys())
+        explanation_tmp = copy.deepcopy(explanation)
+        accfg_feat_names = [ref_features[int(feat.split('-')[1])] for feat in explanation.feature_names]
+        explanation_tmp.feature_names = accfg_feat_names
+    else:
+        explanation_tmp = explanation
     
-    #save_shap_values_to_csv(explanation, X, X_cols, output_folder)
-    plot_summary_plots(explanation, output_folder)
-    plot_scatter_plots(explanation, X_cols, output_folder)
+    #save_shap_values_to_csv(explanation_tmp, X, X_cols, output_folder)
+    plot_summary_plots(explanation_tmp, output_folder)
+    plot_scatter_plots(explanation_tmp, output_folder)
 
     return explanation, explainer, scaler
 
 def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None):
-    if smiles is not None and fingerprints is not None:
+    if smiles is not None and fingerprints is not None:          
         mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
         if mol:
             sample_shap_values = explainer.shap_values(X)[0]
@@ -86,8 +95,7 @@ def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None)
             bit_info = {}
             bit_shap_values = {}
             if fingerprints == 'morgan':
-                AllChem.GetHashedMorganFingerprint(mol, radius=RADIUS, nBits=NBITS, bitInfo=bit_info)
-                
+                AllChem.GetHashedMorganFingerprint(mol, radius=RADIUS, nBits=NBITS, bitInfo=bit_info)   
             elif fingerprints == 'accfg':
                 fp, bit_info = AccFgFingerprint().explain_mols(smiles)
             elif fingerprints == 'rdkit':
@@ -101,7 +109,7 @@ def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None)
             valid_top_bits = [bit for bit in sorted(bit_shap_values.keys(), key=lambda b: abs(bit_shap_values[b]),
                                                     reverse=True) if bit in bit_info][:5]
 
-            return bit_info, valid_top_bits, bit_shap_values               
+            return bit_info, valid_top_bits, bit_shap_values            
 
 def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
     mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
@@ -152,16 +160,24 @@ def save_shap_values_to_csv(explanation, X, feature_names, output_folder, finger
     combined_df.to_csv(os.path.join(output_folder, 'shap_values-' + fingerprints + '.csv'), index=False)
 
 
-def plot_waterfall(explanation, idx, smiles, output_folder, file_name):
-    """Create a waterfall plot for a given sample."""
-    shap.waterfall_plot(explanation[idx], max_display=15, show=False)
+def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerprints):
+    """Create a waterfall plot for a given sample."""   
+    
+    if fingerprints == "accfg":
+        ref_features = list(AccFgFingerprint().get_ref_features().keys())
+        explanation_tmp = copy.deepcopy(explanation)
+        accfg_feat_names = [ref_features[int(feat.split('-')[1])] for feat in explanation.feature_names]
+        explanation_tmp.feature_names = accfg_feat_names
+        shap.plots.waterfall(explanation_tmp[idx], max_display=15, show=False)
+    else:
+        shap.plots.waterfall(explanation[idx], max_display=15, show=False)
     plt.title(f"Molecule: {smiles}")
     plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight')
     plt.close()
 
 
 def plot_summary_plots(explanation, output_folder):
-    """Create summary plots: bar plot and beeswarm plot."""
+    """Create summary plots: bar plot and beeswarm plot."""       
     shap.plots.bar(explanation, max_display=20, show=False)
     plt.savefig(os.path.join(output_folder, "interpretability_bar_plot.png"), bbox_inches='tight')
     plt.close()
@@ -171,15 +187,14 @@ def plot_summary_plots(explanation, output_folder):
     plt.close()
 
 
-def plot_scatter_plots(explanation, feature_names, output_folder):
+def plot_scatter_plots(explanation, output_folder):
     """Create scatter plots for the top 5 features."""
     shap_values = explanation.values
     top_features = np.argsort(-np.abs(shap_values).mean(0))[:5]
 
-    for feature in top_features:
-        explanation.feature_names = feature_names
+    for i, feature in enumerate(top_features):
         shap.plots.scatter(explanation[:, feature], show=False)
-        plt.savefig(os.path.join(output_folder, f"interpretability_{feature_names[feature]}.png"), bbox_inches='tight')
+        plt.savefig(os.path.join(output_folder, f"interpretability_feature{i+1}.png"), bbox_inches='tight')
         plt.close()
 
 
@@ -202,7 +217,7 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
         p = Draw.DrawRDKitBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
         p.save(output_path)
 
-    add_title_to_image(output_path, f"Top 5 features({fingerprints}-fps) for: {smiles}")
+    add_title_to_image(output_path, f"Top 5 features({fingerprints}-fps)")
 
 
 def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
@@ -214,11 +229,12 @@ def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
 
     min_val = min(atoms_shapley_dict.values())
     max_val = max(atoms_shapley_dict.values())
+    max_abs = max(abs(min_val), abs(max_val))
 
     #Scale and color atoms
     atom_colors = {}
-    colormap = plt.cm.get_cmap("RdBu")
-    norm = plt.Normalize(min_val, max_val)
+    colormap = custom_cmap()
+    norm = plt.Normalize(-1*max_abs, max_abs)
     for atom in atoms_shapley_dict:
         c = colormap(norm(atoms_shapley_dict[atom]))
         c = (c[0], c[1], c[2], 0.7)
@@ -247,7 +263,12 @@ def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
                         highlightBonds=list(bond_colors.keys()), highlightBondColors=bond_colors)
     drawer.FinishDrawing()
     drawer.WriteDrawingText(output_path)
-    add_title_to_image(output_path, f"{smiles}")
+    add_title_to_image(output_path, f"Substructure importance")
+
+def custom_cmap():
+    colors = [(0.0, "#008bfb"), (0.5, "#FFFFFF"), (1.0, "#ff0051")]
+    custom_cmap = LinearSegmentedColormap.from_list("shap_white_center", colors)
+    return custom_cmap
 
 # Add titles
 def add_title_to_image(image_path, title):
