@@ -19,7 +19,7 @@ import sys
 
 sys.path.append('.')
 from xai4chem import MorganFingerprint, RDKitDescriptor, DatamolDescriptor, AccFgFingerprint
-from xai4chem.reporting import explain_model, explain_mol_features, regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall
+from xai4chem.reporting import explain_model, explain_mol_features, regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall, draw_top_features
 
 
 class Regressor:
@@ -199,7 +199,7 @@ class Regressor:
         if self.explainer is None:
             raise ValueError("The model has not yet been explained.")
         if self.fingerprints != "morgan" and self.fingerprints != "accfg":
-            raise ValueError("MorganFPs or rdkitFPs are required for substructure interpretability.")
+            raise ValueError("Morgan or AccFG fingerprints are required for substructure interpretability.")
         X = self._featurize_smiles([smiles])
         X = X[self.selected_features]
         X_cols = X.columns
@@ -208,10 +208,11 @@ class Regressor:
         raw_atom_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints=self.fingerprints)
         scaled_shapley_values = self.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
         atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
-
-        highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + "_highlights_accfg.png"))
+        
+        highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + f"_highlights_{self.fingerprints}.png"))
         shap_values = self.explainer(X)
-        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_accfg", self.fingerprints)
+        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_accfg.png", self.fingerprints)
+        draw_top_features(bit_info, valid_top_bits, smiles, os.path.join(self.output_folder, smiles + f"_top_features_{self.fingerprints}.png"), self.fingerprints)
         
         if atomInfo:
             return atom_shapley_values
@@ -227,6 +228,7 @@ class Regressor:
             'model': self.model,
             'selected_features': self.selected_features,
             'fingerprints': self.fingerprints, 
+            'describer': self.descriptor, 
         }
         if self.explainer is not None:
             model_data['shapley_explainer'] = self.explainer
@@ -239,6 +241,7 @@ class Regressor:
         self.model = model_data['model']
         self.selected_features = model_data['selected_features']
         self.fingerprints = model_data["fingerprints"]
+        self.descriptor = model_data["describer"]
         if 'shapley_explainer' in model_data:
             self.explainer = model_data['shapley_explainer']
             self.explanation = model_data['training_explanation']

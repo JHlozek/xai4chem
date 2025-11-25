@@ -14,6 +14,11 @@ def ref_features():
     df = pd.read_csv(os.path.join(REF_PATH, "fgs_all.csv"))
     fgs_ref = {fg : i for i, fg in enumerate(df["Functional Group"].tolist())}
     return fgs_ref
+    
+def ref_smarts():
+    df = pd.read_csv(os.path.join(REF_PATH, "fgs_all.csv"))
+    smarts_ref = {sm : i for i, sm in enumerate(df["SMARTS Pattern"].tolist())}
+    return smarts_ref
 
 def accfg_featurizer(smi_list):
     afg = AccFG()
@@ -69,6 +74,9 @@ class AccFgFingerprint(object):
     
     def get_ref_features(self):
         return ref_features()
+    
+    def get_ref_smarts(self):
+        return ref_smarts()
     
     def save(self, file_name):
         joblib.dump(self, file_name)

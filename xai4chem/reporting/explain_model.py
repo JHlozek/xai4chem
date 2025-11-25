@@ -8,7 +8,7 @@ import datamol as dm
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw, rdFingerprintGenerator
 from rdkit.Geometry import Point2D
-from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo
+from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo, MolsToGridImage
 from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -62,10 +62,8 @@ def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
             scaled_shapley_values = scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
             atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
             
-            if fingerprints == "morgan":
-                draw_top_features(bit_info, valid_top_bits, smiles,
-                            os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
-            # add feature drawing for AccFG fingerprints
+            draw_top_features(bit_info, valid_top_bits, smiles,
+                        os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
             highlight_and_draw_molecule(atom_shapley_values, smiles,
                         os.path.join(output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
 
@@ -171,9 +169,9 @@ def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerpri
         shap.plots.waterfall(explanation_tmp[idx], max_display=15, show=False)
     else:
         shap.plots.waterfall(explanation[idx], max_display=15, show=False)
-    plt.title(f"Molecule: {smiles}")
-    plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight')
+    plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight', dpi=300)
     plt.close()
+    add_title_to_image(os.path.join(output_folder, file_name), f"Molecule: {smiles}")
 
 
 def plot_summary_plots(explanation, output_folder):
@@ -200,24 +198,39 @@ def plot_scatter_plots(explanation, output_folder):
 
 def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprints):
     """Draw and save top features(bits)."""
-    list_bits = []
-    legends = []
-
     mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
-    for x in valid_top_bits:
+    
+    if fingerprints == "morgan" or fingerprints == "rdkit":
+        list_bits = []
+        legends = []
+        for x in valid_top_bits:
             for i in range(len(bit_info[x])):
                 list_bits.append((mol, x, bit_info, i))
                 legends.append(str(x))
-    options = Draw.rdMolDraw2D.MolDrawOptions()
-    options.prepareMolsBeforeDrawing = False    
-    if fingerprints == 'morgan':
-        p = Draw.DrawMorganBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
+        options = Draw.rdMolDraw2D.MolDrawOptions()
+        options.prepareMolsBeforeDrawing = False    
+        if fingerprints == 'morgan':
+            p = Draw.DrawMorganBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
+        elif fingerprints == 'rdkit':
+            p = Draw.DrawRDKitBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
         p.save(output_path)
-    elif fingerprints == 'rdkit':
-        p = Draw.DrawRDKitBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
-        p.save(output_path)
-
-    add_title_to_image(output_path, f"Top 5 features({fingerprints}-fps)")
+    elif fingerprints == "accfg":
+        fps = AccFgFingerprint()
+        ref_features = list(fps.get_ref_features().keys())
+        ref_smarts = list(fps.get_ref_smarts().keys())
+        
+        mol_frags, labels = [], []
+        for x in valid_top_bits:
+            mol = Chem.MolFromSmarts(ref_smarts[x])
+            mol_frags.append(mol)
+            labels.append(ref_features[x])
+        img = MolsToGridImage(mol_frags,
+                      molsPerRow=5,
+                      subImgSize=(200, 200),
+                      legends=labels, 
+                      returnPNG=False)
+        img.save(output_path)
+    add_title_to_image(output_path, f"Top 5 features ({fingerprints}-fps)")
 
 
 def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
@@ -275,7 +288,7 @@ def add_title_to_image(image_path, title):
     img = mpimg.imread(image_path)
     plt.figure(figsize=(8, 8))
     plt.imshow(img)
-    plt.title(title, fontsize=16)
+    plt.title(title, fontsize=14)
     plt.axis('off')  # Hide axis
     plt.savefig(image_path, bbox_inches='tight')
     plt.close()
