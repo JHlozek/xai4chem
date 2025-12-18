@@ -22,82 +22,81 @@ NBITS = 2048
 _MIN_PATH_LEN = 1
 _MAX_PATH_LEN = 7 
 
+class Explainer:
+    def __init__(self, model, smiles_list, output_folder, fingerprints=None):
+        self.model = model #regression or classification object
+        self.xgb_model = self.model.model
+        self.smiles_list = smiles_list
+        self.X = self.model._featurize_smiles(self.smiles_list)
+        self.output_folder = output_folder
+        self.fingerprints = fingerprints
 
-def explain_model(model, X, smiles_list, output_folder, fingerprints=None):
-    print('Explaining model')
-    create_output_folder(output_folder)
+    def explain_model(self):
+        print('Explaining model')
+        create_output_folder(self.output_folder)
         
-    X_cols = X.columns.tolist()
-    X_matrix = xgb.DMatrix(X)
+        X_cols = self.X.columns.tolist()
     
-    explainer = shap.TreeExplainer(model)
-    explanation = explainer(X)
-    explanation.feature_names = X_cols
-    
-    #Samples
-    predictions = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else model.predict(X)
-    percentiles = [0, 25, 50, 75, 100]
-    percentile_values = np.percentile(predictions, percentiles)
+        self.explainer = shap.TreeExplainer(self.xgb_model)
+        self.explanation = self.explainer(self.X)
+        self.explanation.feature_names = X_cols
 
-    # Indices of the predictions closest to the percentile values
-    sample_indices = [np.argmin(np.abs(predictions - value)) for value in percentile_values]
+        # Plot example substructure importance
+        if self.fingerprints == "morgan" or self.fingerprints == "accfg":
+            #scale SHAP values per atom
+            raw_scores = []
+            for idx, smiles in enumerate(self.smiles_list):
+                bit_info, valid_top_bits, bit_shap_values = self.explain_mol_features(smiles, X_cols, self.fingerprints)
+                tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, self.fingerprints)
+                raw_scores += list(tmp.values())
+            self.scaler = MaxAbsScaler()
+            self.scaler.fit(np.array(raw_scores).reshape(-1,1))
 
-    if fingerprints == "morgan" or fingerprints == "accfg":
-        #scale SHAP values per atom
-        raw_scores = []
-        for idx, smiles in enumerate(smiles_list):
-            bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
-            tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
-            raw_scores += list(tmp.values())
-        scaler = MaxAbsScaler()
-        scaler.fit(np.array(raw_scores).reshape(-1,1))
+            #Samples
+            predictions = self.xgb_model.predict_proba(X)[:, 1] if hasattr(self.xgb_model, 'predict_proba') else self.xgb_model.predict(self.X)
+            percentiles = [0, 25, 50, 75, 100]
+            percentile_values = np.percentile(predictions, percentiles)
 
-        
-        for i, idx in enumerate(sample_indices):
-            smiles = smiles_list[idx] if smiles_list is not None else f'Sample {idx}'
-            plot_waterfall(explanation, idx, smiles, output_folder, f"interpretability_sample_p{percentiles[i]}.png", fingerprints)
-    
-            bit_info, valid_top_bits, bit_shap_values = explain_mol_features(explainer, X_matrix.slice([idx]), smiles, X_cols, fingerprints)
-            atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints)
-            scaled_shapley_values = scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
-            atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
+            # Indices of the predictions closest to the percentile values
+            sample_indices = [np.argmin(np.abs(predictions - value)) for value in percentile_values]
             
-            draw_top_features(bit_info, valid_top_bits, smiles,
-                        os.path.join(output_folder, f'sample_p{percentiles[i]}_top_features.png'), fingerprints)
-            highlight_and_draw_molecule(atom_shapley_values, smiles,
-                        os.path.join(output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
-
-    else:
-        scaler = None
-
-    if fingerprints == "accfg":
-        ref_features = list(AccFgFingerprint().get_ref_features().keys())
-        explanation_tmp = copy.deepcopy(explanation)
-        accfg_feat_names = [ref_features[int(feat.split('-')[1])] for feat in explanation.feature_names]
-        explanation_tmp.feature_names = accfg_feat_names
-    else:
-        explanation_tmp = explanation
+            for i, idx in enumerate(sample_indices):
+                smiles = self.smiles_list[idx] if self.smiles_list is not None else f'Sample {idx}'
+                plot_waterfall(self.explanation, idx, smiles, self.output_folder, f"interpretability_sample_p{percentiles[i]}.png", self.fingerprints)
     
-    #save_shap_values_to_csv(explanation_tmp, X, X_cols, output_folder)
-    plot_summary_plots(explanation_tmp, output_folder)
-    plot_scatter_plots(explanation_tmp, output_folder)
+                bit_info, valid_top_bits, bit_shap_values = self.explain_mol_features(smiles, X_cols, self.fingerprints)
+                atom_shapley_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, self.fingerprints)
+                scaled_shapley_values = self.scaler.transform(np.array(list(atom_shapley_values.values())).reshape(-1,1)).flatten()
+                atom_shapley_values = {k:scaled_shapley_values[i] for i,k in enumerate(atom_shapley_values)}
+            
+                draw_top_features(bit_info, valid_top_bits, smiles,
+                        os.path.join(self.output_folder, f'sample_p{percentiles[i]}_top_features.png'), self.fingerprints)
+                highlight_and_draw_molecule(atom_shapley_values, smiles,
+                        os.path.join(self.output_folder, f"sample_p{percentiles[i]}_shap_highlights.png"))
+        else:
+            self.scaler = None
 
-    return explanation, explainer, scaler
+        # Replace col names with moiety names (some functional group names contained prohibited characters like '[')
+        if self.fingerprints == "accfg": 
+            ref_features = list(AccFgFingerprint().get_ref_features().keys())
+            explanation_tmp = copy.deepcopy(self.explanation)
+            accfg_feat_names = [ref_features[int(feat.split('-')[1])] for feat in self.explanation.feature_names]
+            explanation_tmp.feature_names = accfg_feat_names
+        else:
+            explanation_tmp = self.explanation
+    
+        save_shap_values_to_csv(explanation_tmp, self.X, X_cols, self.output_folder)
+        plot_summary_plots(explanation_tmp, self.output_folder)
+        plot_scatter_plots(explanation_tmp, self.output_folder)
 
-def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None):
-    if smiles is not None and fingerprints is not None:          
-        mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
-        if mol:
-            sample_shap_values = explainer.shap_values(X)[0]
+    def explain_mol_features(self, smiles, feature_names, fingerprints=None):
+        can_smi = Chem.MolToSmiles(Chem.MolFromSmiles(smiles))
+        X = self.model._featurize_smiles([can_smi])
+        if can_smi is not None and fingerprints is not None:          
+            sample_shap_values = self.explainer.shap_values(X)[0]
 
-            bit_info = {}
             bit_shap_values = {}
-            if fingerprints == 'morgan':
-                AllChem.GetHashedMorganFingerprint(mol, radius=RADIUS, nBits=NBITS, bitInfo=bit_info)   
-            elif fingerprints == 'accfg':
-                fp, bit_info = AccFgFingerprint().explain_mols(smiles)
-            elif fingerprints == 'rdkit':
-                Chem.RDKFingerprint(mol, minPath=_MIN_PATH_LEN, maxPath=_MAX_PATH_LEN, fpSize=NBITS, bitInfo=bit_info)
+            X_df, bit_info = self.model.descriptor.explain_mols([can_smi]) #get bitInfo
             
             for bit_idx, feature_name in enumerate(feature_names):
                 bit = int(feature_name.split('-')[1])
@@ -110,7 +109,6 @@ def explain_mol_features(explainer, X, smiles, feature_names, fingerprints=None)
             return bit_info, valid_top_bits, bit_shap_values            
 
 def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
-    mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
     atom_shapley_scores = {}
     if fingerprints == "accfg":
         for bit in bit_info:
@@ -200,7 +198,7 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
     """Draw and save top features(bits)."""
     mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
     
-    if fingerprints == "morgan" or fingerprints == "rdkit":
+    if fingerprints == "morgan":
         list_bits = []
         legends = []
         for x in valid_top_bits:
@@ -209,11 +207,9 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
                 legends.append(str(x))
         options = Draw.rdMolDraw2D.MolDrawOptions()
         options.prepareMolsBeforeDrawing = False    
-        if fingerprints == 'morgan':
-            p = Draw.DrawMorganBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
-        elif fingerprints == 'rdkit':
-            p = Draw.DrawRDKitBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
+        p = Draw.DrawMorganBits(list_bits, molsPerRow=6, legends=legends, drawOptions=options)
         p.save(output_path)
+        
     elif fingerprints == "accfg":
         fps = AccFgFingerprint()
         ref_features = list(fps.get_ref_features().keys())

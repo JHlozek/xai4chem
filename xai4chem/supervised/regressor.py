@@ -7,24 +7,20 @@ import json
 import shap
 import optuna
 import xgboost
-import lightgbm
-from catboost import CatBoostRegressor
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from featurewiz import FeatureWiz
-from flaml.default import LGBMRegressor, XGBRegressor
-from flaml.default import preprocess_and_suggest_hyperparams
 import sys
 
 sys.path.append('.')
 from xai4chem import MorganFingerprint, RDKitDescriptor, DatamolDescriptor, AccFgFingerprint
-from xai4chem.reporting import explain_model, explain_mol_features, regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall, draw_top_features
+from xai4chem.reporting import Explainer
+from xai4chem.reporting import regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall, draw_top_features
 
 
 class Regressor:
-    def __init__(self, output_folder, fingerprints="morgan", algorithm='xgboost', n_trials=500, k=None):
-        self.algorithm = algorithm
+    def __init__(self, output_folder, fingerprints="morgan", n_trials=300, k=None):
         self.n_trials = n_trials
         self.output_folder = output_folder
         if not os.path.exists(self.output_folder):
@@ -93,21 +89,6 @@ class Regressor:
         model = xgboost.XGBRegressor(**params)
         return self._train_and_evaluate_optuna_model(model, X, y)
 
-    def _optimize_catboost(self, trial, X, y):
-        params = {
-            'iterations': trial.suggest_int("iterations", 500, 2000),
-            'learning_rate': trial.suggest_float('learning_rate', 0.0001, 1),
-            'reg_lambda': trial.suggest_float('reg_lambda', 1, 10),
-            'subsample': trial.suggest_categorical('subsample', [0.4, 0.5, 0.6, 0.7, 0.8, 1.0]),
-            'random_strength': trial.suggest_float('random_strength', 1, 10),
-            'depth': trial.suggest_int('depth', 5, 10),
-            'leaf_estimation_iterations': trial.suggest_int('leaf_estimation_iterations', 5, 10),
-            'early_stopping_rounds': 10
-        }
-
-        model = CatBoostRegressor(loss_function="RMSE", random_state=42, **params)
-        return self._train_and_evaluate_optuna_model(model, X, y)
-
     def _train_and_evaluate_optuna_model(self, model, X, y):
         X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -118,52 +99,19 @@ class Regressor:
         return mae
         
     def _featurize_smiles(self, smiles_list):
-        smiles_transformed = self.descriptor.transform(smiles_list)
-        return smiles_transformed
+        X = self.descriptor.transform(smiles_list)
+        X = X[self.selected_features]
+        return X
 
-    def fit(self, X_train, y_train, default_params=True):
+    def fit(self, X_train, y_train):
         self._select_features(X_train, y_train)
         X_train = X_train[self.selected_features]
-        if self.algorithm == 'xgboost':
-            if not default_params:
-                study = optuna.create_study(direction="minimize")
-                study.optimize(lambda trial: self._optimize_xgboost(trial, X_train.values, y_train), n_trials=self.n_trials)
-                best_params = study.best_params
-                print('Best parameters for XGBoost:', best_params)
-                self.model = xgboost.XGBRegressor(**best_params)
-            else:
-                estimator = XGBRegressor()
-                (
-                    hyperparams,
-                    estimator_name,
-                    X_transformed,
-                    y_transformed,
-                ) = estimator.suggest_hyperparams(X_train, y_train)
-                self.model = xgboost.XGBRegressor(**hyperparams)
-            self.model.fit(X_train.values, y_train)
-        elif self.algorithm == 'catboost':
-            if not default_params:
-                study = optuna.create_study(direction="minimize")
-                study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials)
-                best_params = study.best_params
-                print('Best parameters for CatBoost:', best_params)
-                self.model = CatBoostRegressor(**best_params)
-            else:
-                self.model = CatBoostRegressor()
-            self.model.fit(X_train, y_train, verbose=False)
-        elif self.algorithm == 'lgbm':
-            estimator = LGBMRegressor()
-            (
-                hyperparams,
-                estimator_name,
-                X_transformed,
-                y_transformed,
-            ) = estimator.suggest_hyperparams(X_train, y_train)
-
-            self.model = lightgbm.LGBMRegressor(**hyperparams)
-            self.model.fit(X_train, y_train)
-        else:
-            raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
+        study = optuna.create_study(direction="minimize")
+        study.optimize(lambda trial: self._optimize_xgboost(trial, X_train.values, y_train), n_trials=self.n_trials)
+        best_params = study.best_params
+        print('Best parameters for XGBoost:', best_params)
+        self.model = xgboost.XGBRegressor(**best_params)
+        self.model.fit(X_train.values, y_train)
 
     def evaluate(self, X_valid_features, smiles_valid, y_valid):
         if self.model is None:
@@ -189,9 +137,8 @@ class Regressor:
         elif self.fingerprints == "accfg":
             self.descriptor = AccFgFingerprint()
         self.descriptor.fit(smiles_list)
-        X = self._featurize_smiles(smiles_list)
-        X = X[self.selected_features]
-        self.explanation, self.explainer, self.scaler = explain_model(self.model, X, smiles_list, self.output_folder, self.fingerprints)
+        self.explainer = Explainer(self, smiles_list, self.output_folder, self.fingerprints)
+        self.explainer.explain_model()
 
     def explain_mol_atoms(self, smiles, atomInfo=False):
         if self.model is None:
@@ -201,17 +148,16 @@ class Regressor:
         if self.fingerprints != "morgan" and self.fingerprints != "accfg":
             raise ValueError("Morgan or AccFG fingerprints are required for substructure interpretability.")
         X = self._featurize_smiles([smiles])
-        X = X[self.selected_features]
         X_cols = X.columns
 
-        bit_info, valid_top_bits, bit_shap_values = explain_mol_features(self.explainer, X, smiles, X_cols, fingerprints=self.fingerprints)
+        bit_info, valid_top_bits, bit_shap_values = self.explainer.explain_mol_features(smiles, X_cols, fingerprints=self.fingerprints)
         raw_atom_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints=self.fingerprints)
-        scaled_shapley_values = self.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
+        scaled_shapley_values = self.explainer.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
         atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
-        
         highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + f"_highlights_{self.fingerprints}.png"))
-        shap_values = self.explainer(X)
-        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_accfg.png", self.fingerprints)
+        
+        shap_values = self.explainer.explainer(X)
+        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_{self.fingerprints}.png", self.fingerprints)
         draw_top_features(bit_info, valid_top_bits, smiles, os.path.join(self.output_folder, smiles + f"_top_features_{self.fingerprints}.png"), self.fingerprints)
         
         if atomInfo:
@@ -232,8 +178,6 @@ class Regressor:
         }
         if self.explainer is not None:
             model_data['shapley_explainer'] = self.explainer
-            model_data['training_explanation'] = self.explanation
-            model_data['color_scaler'] = self.scaler
         joblib.dump(model_data, filename)
 
     def load_model(self, filename):
@@ -244,5 +188,3 @@ class Regressor:
         self.descriptor = model_data["describer"]
         if 'shapley_explainer' in model_data:
             self.explainer = model_data['shapley_explainer']
-            self.explanation = model_data['training_explanation']
-            self.scaler = model_data['color_scaler']

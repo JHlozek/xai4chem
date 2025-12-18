@@ -42,7 +42,7 @@ def morgan_featurizer(smiles):
         X[i,:] = d.calc(mol)
     return X
 
-def morgan_explainer(smiles):
+def morgan_bit_explainer(smiles):
     d = _Fingerprinter()
     X = np.zeros((len(smiles), NBITS), dtype=np.int8)
     bitInfo = []
@@ -67,7 +67,7 @@ class MorganFingerprint(object):
         return pd.DataFrame(X, columns=self.features)
 
     def explain_mols(self, smiles):
-        X, bitInfo = morgan_explainer(smiles)
+        X, bitInfo = morgan_bit_explainer(smiles)
         return pd.DataFrame(X, columns=self.features), bitInfo
     
     def save(self, file_name):

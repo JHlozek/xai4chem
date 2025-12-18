@@ -33,7 +33,7 @@ def accfg_featurizer(smi_list):
     return arr
 
 
-def accfg_explainer(smi_list):
+def accfg_bit_explainer(smi_list):
     if type(smi_list) is not list:
         smi_list = [smi_list]
     afg = AccFG()
@@ -66,11 +66,11 @@ class AccFgFingerprint(object):
 
     def transform(self, smiles):
         X = accfg_featurizer(smiles)
-        return pd.DataFrame(X, columns=["fp-{0}".format(i) for i in range(X.shape[1])])
+        return pd.DataFrame(X, columns=self.features)
 
     def explain_mols(self, smiles):
-        X, bitInfo = accfg_explainer(smiles)
-        return pd.DataFrame(X, columns=["fp-{0}".format(i) for i in range(X.shape[1])]), bitInfo[0]
+        X, bitInfo = accfg_bit_explainer(smiles)
+        return pd.DataFrame(X, columns=self.features), bitInfo[0]
     
     def get_ref_features(self):
         return ref_features()

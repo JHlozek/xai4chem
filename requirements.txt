@@ -3,14 +3,10 @@ datamol==0.12.0
 rdkit==2023.09.5
 shap==0.45.0
 xgboost<=2.0
-catboost==1.2.3
 optuna==3.5.0
-mordred==1.2.0
 pandas<=2.1
 matplotlib==3.8.3
 featurewiz==0.6.0
-tensorflow==2.16.1
-flaml==2.1.2
 imblearn
 pydantic
 aiohttp
