@@ -140,25 +140,32 @@ class Regressor:
         self.explainer = Explainer(self, smiles_list, self.output_folder, self.fingerprints)
         self.explainer.explain_model()
 
-    def explain_mol_atoms(self, smiles, atomInfo=False):
+    def explain_mol_atoms(self, smiles, atomInfo=False, file_prefix=None):
         if self.model is None:
             raise ValueError("The model has not been trained.")
         if self.explainer is None:
             raise ValueError("The model has not yet been explained.")
-        if self.fingerprints != "morgan" and self.fingerprints != "accfg":
-            raise ValueError("Morgan or AccFG fingerprints are required for substructure interpretability.")
         X = self._featurize_smiles([smiles])
         X_cols = X.columns
 
-        bit_info, valid_top_bits, bit_shap_values = self.explainer.explain_mol_features(smiles, X_cols, fingerprints=self.fingerprints)
-        raw_atom_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints=self.fingerprints)
-        scaled_shapley_values = self.explainer.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
-        atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
-        highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + f"_highlights_{self.fingerprints}.png"))
-        
         shap_values = self.explainer.explainer(X)
-        plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + "_waterfall_{self.fingerprints}.png", self.fingerprints)
-        draw_top_features(bit_info, valid_top_bits, smiles, os.path.join(self.output_folder, smiles + f"_top_features_{self.fingerprints}.png"), self.fingerprints)
+        if file_prefix:
+            plot_waterfall(shap_values, 0, smiles, self.output_folder, file_prefix + f"_waterfall_{self.fingerprints}.png", self.fingerprints)
+        else:
+            plot_waterfall(shap_values, 0, smiles, self.output_folder, smiles + f"_waterfall_{self.fingerprints}.png", self.fingerprints)
+        
+        if self.fingerprints == "morgan" or self.fingerprints == "accfg":
+            bit_info, valid_top_bits, bit_shap_values = self.explainer.explain_mol_features(smiles, X_cols, fingerprints=self.fingerprints)
+            raw_atom_values = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints=self.fingerprints)
+            scaled_shapley_values = self.explainer.scaler.transform(np.array(list(raw_atom_values.values())).reshape(-1, 1)).flatten()
+            atom_shapley_values = {k: scaled_shapley_values[i] for i, k in enumerate(raw_atom_values)}
+        
+            if file_prefix:
+                highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, file_prefix + f"_highlights_{self.fingerprints}.png"))
+                draw_top_features(bit_info, valid_top_bits, smiles, os.path.join(self.output_folder, file_prefix + f"_top_features_{self.fingerprints}.png"), self.fingerprints) 
+            else:
+                highlight_and_draw_molecule(atom_shapley_values, smiles, os.path.join(self.output_folder, smiles + f"_highlights_{self.fingerprints}.png"))
+                draw_top_features(bit_info, valid_top_bits, smiles, os.path.join(self.output_folder, smiles + f"_top_features_{self.fingerprints}.png"), self.fingerprints)
         
         if atomInfo:
             return atom_shapley_values

@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import datamol as dm
+from tqdm import tqdm
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw, rdFingerprintGenerator
 from rdkit.Geometry import Point2D
@@ -43,9 +44,10 @@ class Explainer:
 
         # Plot example substructure importance
         if self.fingerprints == "morgan" or self.fingerprints == "accfg":
+            print("...Analysing substructure importance...")
             #scale SHAP values per atom
             raw_scores = []
-            for idx, smiles in enumerate(self.smiles_list):
+            for idx, smiles in enumerate(tqdm(self.smiles_list)):
                 bit_info, valid_top_bits, bit_shap_values = self.explain_mol_features(smiles, X_cols, self.fingerprints)
                 tmp = shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, self.fingerprints)
                 raw_scores += list(tmp.values())
