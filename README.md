@@ -16,7 +16,7 @@ python -m pip install git+https://github.com/ersilia-os/xai4chem.git
 ## Usage
 ### CLI
 #### Training Explainer
-Use the following command to train the model:
+Use the following command to train the model and produce global explanations for the training data:
 
 ```bash
 xai4chem explain_global --input_file <path_to_input_csv> --output_dir <output_directory> --representation <representation_type>
@@ -27,7 +27,7 @@ xai4chem explain_global --input_file <path_to_input_csv> --output_dir <output_di
 
 
 #### Inference
-Use the following command to make predictions with a trained model:
+Use the following command to make predictions with a trained model for a shortlist of molecules:
 
 ```bash 
 xai4chem explain_mols --input_file <path_to_input_csv> --model_dir <model_directory> --output_dir <output_directory>
@@ -35,12 +35,14 @@ xai4chem explain_mols --input_file <path_to_input_csv> --model_dir <model_direct
 - <path_to_input_csv>: Path to the CSV file containing input data (must include "smiles" column).
 - <model_directory>: Directory containing the saved model file.
 - <output_directory>: Directory to save the prediction results, and interpretability reports.
-- <index_col>: (Optional) provide the column name to use for naming the output files for each molecule instead of using the SMILES string.
+- <index_col>: (Optional) provide the column name to use for naming the output files for each molecule instead of using the SMILES string of each molecule.
+
+If the explainer was trained with the accfg representation, then functional group explanations will be produced for each molecule.
 
 ### API
 
-```See notebook example in /notebooks/train_and_plot_interpretability.ipynb
-```
+See notebook example in /notebooks/train_and_plot_interpretability.ipynb
+
 
 #### Data
 Read data file and split:
