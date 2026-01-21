@@ -7,12 +7,9 @@ import seaborn as sns
 from tqdm import tqdm
 
 def explain_mols(args):
-    # Load model and descriptor
-    model_path = os.path.join(args.model_dir, "model.pkl")
-    
     # Determine model type
     temp_model = Regressor(args.output_dir)
-    temp_model.load_model(model_path)
+    temp_model.load_model(args.model_path)
     if hasattr(temp_model.model, 'predict_proba'):
         model = Classifier(args.output_dir)
         model_type = 'clf'
@@ -20,7 +17,7 @@ def explain_mols(args):
         model = Regressor(args.output_dir)
         model_type = 'reg'
     
-    model.load_model(model_path)
+    model.load_model(args.model_path)
     
     # Load and transform data
     data = pd.read_csv(args.input_file)

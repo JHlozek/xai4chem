@@ -87,9 +87,27 @@ class Explainer:
         else:
             explanation_tmp = self.explanation
     
-        save_shap_values_to_csv(explanation_tmp, self.X, X_cols, self.output_folder)
+        save_shap_values_to_csv(explanation_tmp, self.X, explanation_tmp.feature_names, self.output_folder, fingerprints=self.fingerprints)
         plot_summary_plots(explanation_tmp, self.output_folder)
         plot_scatter_plots(explanation_tmp, self.output_folder)
+
+    def explain_predictions(self, smiles, output_folder):
+        X_cols = self.X.columns.tolist()
+        X_preds = self.model._featurize_smiles(smiles)
+    
+        preds_explanation = self.explainer(X_preds)
+        preds_explanation.feature_names = X_cols
+        if self.fingerprints == "accfg": 
+            ref_features = list(AccFgFingerprint().get_ref_features().keys())
+            explanation_tmp = copy.deepcopy(preds_explanation)
+            accfg_feat_names = [ref_features[int(feat.split('-')[1])] for feat in preds_explanation.feature_names]
+            explanation_tmp.feature_names = accfg_feat_names
+        else:
+            explanation_tmp = preds_explanation
+    
+        save_shap_values_to_csv(explanation_tmp, X_preds, X_cols, output_folder, fingerprints=self.fingerprints)
+        plot_summary_plots(explanation_tmp, output_folder)
+        plot_scatter_plots(explanation_tmp, output_folder)
 
     def explain_mol_features(self, smiles, feature_names, fingerprints=None):
         can_smi = Chem.MolToSmiles(Chem.MolFromSmiles(smiles))
@@ -127,12 +145,13 @@ def shapley_raw_total_per_atom(bit_info, bit_shap_values, smiles, fingerprints):
         
     if fingerprints == "morgan":
         for bit in bit_info:
-            if bit in bit_shap_values:
+            if bit in list(bit_shap_values.keys()):
                 bit_shap_score = bit_shap_values[bit]
             else:
                 continue
 
             for centres in bit_info[bit]:
+                mol = Chem.MolFromSmiles(smiles)
                 env = Chem.FindAtomEnvironmentOfRadiusN(mol, centres[1], centres[0])
                 atoms = set([centres[0]])
                 atoms = list(atoms)
@@ -160,7 +179,7 @@ def save_shap_values_to_csv(explanation, X, feature_names, output_folder, finger
 
 def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerprints):
     """Create a waterfall plot for a given sample."""   
-    
+    plt.clf()
     if fingerprints == "accfg":
         ref_features = list(AccFgFingerprint().get_ref_features().keys())
         explanation_tmp = copy.deepcopy(explanation)
@@ -175,11 +194,13 @@ def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerpri
 
 
 def plot_summary_plots(explanation, output_folder):
-    """Create summary plots: bar plot and beeswarm plot."""       
+    """Create summary plots: bar plot and beeswarm plot.""" 
+    plt.clf()      
     shap.plots.bar(explanation, max_display=20, show=False)
     plt.savefig(os.path.join(output_folder, "interpretability_bar_plot.png"), bbox_inches='tight')
     plt.close()
 
+    plt.clf()
     shap.plots.beeswarm(explanation, max_display=15, show=False)
     plt.savefig(os.path.join(output_folder, "interpretability_beeswarm_plot.png"), bbox_inches='tight')
     plt.close()
@@ -187,6 +208,7 @@ def plot_summary_plots(explanation, output_folder):
 
 def plot_scatter_plots(explanation, output_folder):
     """Create scatter plots for the top 5 features."""
+    plt.clf()
     shap_values = explanation.values
     top_features = np.argsort(-np.abs(shap_values).mean(0))[:5]
 
@@ -198,6 +220,7 @@ def plot_scatter_plots(explanation, output_folder):
 
 def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprints):
     """Draw and save top features(bits)."""
+    plt.clf()
     mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
     
     if fingerprints == "morgan":

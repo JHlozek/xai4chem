@@ -1,11 +1,9 @@
 import numpy as np
 import pandas as pd
 import joblib
+from rdkit import Chem
 from rdkit.Chem import rdFingerprintGenerator
 from sklearn.feature_selection import VarianceThreshold
-
-from rdkit.Chem import rdMolDescriptors as rd
-from rdkit import Chem
 
 RADIUS = 3
 NBITS = 2048
@@ -23,15 +21,17 @@ class _Fingerprinter(object):
     def __init__(self):
         self.nbits = NBITS
         self.radius = RADIUS
+        self.mfpgen = rdFingerprintGenerator.GetMorganGenerator(radius=RADIUS,fpSize=NBITS)
 
     def calc(self, mol):
-        v = rd.GetHashedMorganFingerprint(mol, radius=self.radius, nBits=self.nbits)
+        v = self.mfpgen.GetCountFingerprint(mol)
         return clip_sparse(v, self.nbits)
 
     def calc_explain(self, mol):
-        bi = {}
-        v = rd.GetHashedMorganFingerprint(mol, radius=self.radius, nBits=self.nbits, bitInfo=bi)
-        return clip_sparse(v, self.nbits), bi
+        ao = rdFingerprintGenerator.AdditionalOutput()
+        ao.AllocateBitInfoMap()
+        v = self.mfpgen.GetCountFingerprint(mol, additionalOutput=ao)
+        return clip_sparse(v, self.nbits), ao.GetBitInfoMap()
 
 
 def morgan_featurizer(smiles):
@@ -50,7 +50,7 @@ def morgan_bit_explainer(smiles):
         mol = Chem.MolFromSmiles(smi)
         X[i,:], bi = d.calc_explain(mol)
         bitInfo.append(bi)
-    return X, bitInfo
+    return X, bitInfo[0]
 
 class MorganFingerprint(object):
 

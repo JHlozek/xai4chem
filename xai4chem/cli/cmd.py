@@ -22,7 +22,7 @@ class XAI4ChemCLI:
         # Inference command
         mols_parser = subparsers.add_parser('explain_mols', help='Produce explanations for each individual molecule.')
         mols_parser.add_argument('-i', '--input_file', type=str, required=True, help='Path to the CSV file containing input data (must include "smiles" column).')
-        mols_parser.add_argument('-m', '--model_dir', type=str, required=True, help='Directory containing the saved model file.')
+        mols_parser.add_argument('-m', '--model_path', type=str, required=True, help='Path to the saved explainer model file.')
         mols_parser.add_argument('-o', '--output_dir', type=str, required=True, help='Directory to save the prediction results.')
         mols_parser.add_argument('-id_col', '--index_col', type=str, required=False, help='Column with smiles IDs for labeling output explanations.')
         mols_parser.set_defaults(func=explain_mols)

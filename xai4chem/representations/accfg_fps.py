@@ -2,13 +2,13 @@ import os
 import numpy as np
 import pandas as pd
 import joblib
+from importlib import resources
 from rdkit.Chem import rdFingerprintGenerator
 from sklearn.feature_selection import VarianceThreshold
 from xai4chem.tools.accfg.main import AccFG
 
 
-REF_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF_PATH = os.path.join(REF_PATH, "tools", "accfg")
+REF_PATH = resources.files("xai4chem").joinpath("tools/accfg")
 
 def ref_features():
     df = pd.read_csv(os.path.join(REF_PATH, "fgs_all.csv"))

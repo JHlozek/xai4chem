@@ -16,7 +16,6 @@ def regression_metrics(smiles_valid, y_valid, y_pred, output_folder):
 
     # Save as a CSV file
     evaluation_data.to_csv(os.path.join(output_folder, "evaluation_data.csv"), index=False)
-
     plt.scatter(y_valid, y_pred)
     plt.xlabel('True Values')
     plt.ylabel('Predictions')

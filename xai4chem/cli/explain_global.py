@@ -52,7 +52,7 @@ def explain_global(args):
         plt.ylabel('No. of Compounds')        
         plt.savefig(os.path.join(args.output_dir, 'dataset_distribution.png'))
         plt.close()
-        model = Classifier(args.output_dir, fingerprints=fingerprints, algorithm='catboost', k=max_features)
+        model = Classifier(args.output_dir, fingerprints=args.representation, algorithm='xgboost', k=max_features)
     else: 
         print('...Regression.....')
         plt.figure(figsize=(8, 6))
@@ -73,6 +73,6 @@ def explain_global(args):
     model.explain(smiles)    
 
     # Save final model 
-    model_filename = os.path.join(args.output_dir, "model.pkl")
+    model_filename = os.path.join(args.output_dir, "model_" + args.representation + ".pkl")
     model.save_model(model_filename)
    

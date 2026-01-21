@@ -1,4 +1,5 @@
 from rdkit import Chem
+from importlib import resources
 import csv
 import os
 
@@ -12,19 +13,19 @@ class AccFG():
         self.lite = lite
         log_text = ""
         if common_fgs and not lite:
-            self.dict_fgs_common_path = os.path.join(PROJECT_DIR, 'fgs_common.csv')
+            self.dict_fgs_common_path = resources.files("xai4chem").joinpath("tools/accfg/fgs_common.csv")
             
             self.dict_fgs_common = self.csv_to_dict(self.dict_fgs_common_path)
             log_text += f"Loaded {len(self.dict_fgs_common)} common functional groups. "
         elif common_fgs and lite:
-            self.dict_fgs_common_path = os.path.join(PROJECT_DIR, 'fgs_common.csv')
+            self.dict_fgs_common_path = resources.files("xai4chem").joinpath("tools/accfg/fgs_common.csv")
             
             self.dict_fgs_common = self.csv_to_dict(self.dict_fgs_common_path, lite=self.lite)
             log_text += f"Loaded {len(self.dict_fgs_common)} common functional groups (lite). "
         else:
             self.dict_fgs_common = {}
         if heterocycle_fgs:
-            self.dict_fg_heterocycle_path =  os.path.join(PROJECT_DIR,'fgs_heterocycle.csv')
+            self.dict_fg_heterocycle_path =  resources.files("xai4chem").joinpath("tools/accfg/fgs_heterocycle.csv")
             
             self.dict_fg_heterocycle = self.csv_to_dict(self.dict_fg_heterocycle_path)
             log_text += f"Loaded {len(self.dict_fg_heterocycle)} heterocycle groups. "

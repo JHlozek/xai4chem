@@ -107,7 +107,7 @@ class Regressor:
         self._select_features(X_train, y_train)
         X_train = X_train[self.selected_features]
         study = optuna.create_study(direction="minimize")
-        study.optimize(lambda trial: self._optimize_xgboost(trial, X_train.values, y_train), n_trials=self.n_trials)
+        study.optimize(lambda trial: self._optimize_xgboost(trial, X_train.values, y_train), n_trials=self.n_trials, timeout=1200)
         best_params = study.best_params
         print('Best parameters for XGBoost:', best_params)
         self.model = xgboost.XGBRegressor(**best_params)
@@ -139,6 +139,9 @@ class Regressor:
         self.descriptor.fit(smiles_list)
         self.explainer = Explainer(self, smiles_list, self.output_folder, self.fingerprints)
         self.explainer.explain_model()
+
+    def explain_preds(self, smiles_list, output_folder):
+        self.explainer.explain_predictions(smiles_list, output_folder)
 
     def explain_mol_atoms(self, smiles, atomInfo=False, file_prefix=None):
         if self.model is None:
