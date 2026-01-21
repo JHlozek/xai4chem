@@ -6,7 +6,7 @@ xgboost<=2.0
 optuna==4.4.0
 pandas<=2.3.0
 matplotlib==3.10.8
-featurewiz==0.6.0
 imblearn
 pydantic
 aiohttp
+ipython

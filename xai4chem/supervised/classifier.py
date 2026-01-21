@@ -10,7 +10,6 @@ from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, mutual_info_classif
 from xgboost import XGBClassifier
-from featurewiz import FeatureWiz
 from xai4chem.reporting import explain_model, classification_metrics
 
 
@@ -33,33 +32,11 @@ class Classifier:
             print(f"Number of input features is less than or equal to {self.max_features}. Using all features.")
             self.selected_features = list(X_train.columns)
         else:
-            print(f"Features in the dataset are more than {self.max_features}. Using Featurewiz for feature selection")
-            fwiz = FeatureWiz(corr_limit=0.9, feature_engg='', category_encoders='', dask_xgboost_flag=False,
-                              nrows=None, verbose=0)
-            X_train_fwiz, _ = fwiz.fit_transform(X_train, y_train)
-            selected_features = fwiz.features
-
-            if len(selected_features) >= self.max_features:
-                print(
-                    f"Selecting top {self.max_features}")
-                self.selected_features = selected_features[:self.max_features]
-            else:
-                print('Using Featurewiz, skipping SULO algorithm in feature selection')
-                fwiz = FeatureWiz(corr_limit=0.9, skip_sulov=True, feature_engg='', category_encoders='',
-                                  dask_xgboost_flag=False, nrows=None, verbose=0)
-                X_train_fwiz, _ = fwiz.fit_transform(X_train, y_train)
-                selected_features = fwiz.features
-                if len(selected_features) >= self.max_features:
-                    print(
-                        f"Selecting top {self.max_features}")
-                    self.selected_features = selected_features[:self.max_features]
-                else:
-                    print(
-                        f"Number of features selected by Featurewiz is less than {self.max_features}. Using KBest selection.")
-                    selector = SelectKBest(score_func=mutual_info_classif, k=self.max_features)
-                    selector.fit(X_train, y_train)
-                    selected_indices = np.argsort(selector.scores_)[::-1][:self.max_features]
-                    self.selected_features = X_train.columns[selected_indices]
+            print(f"Features in the dataset are more than {self.max_features}. Using KBest selection.")
+            selector = SelectKBest(score_func=mutual_info_classif, k=self.max_features)
+            selector.fit(X_train, y_train)
+            selected_indices = np.argsort(selector.scores_)[::-1][:self.max_features]
+            self.selected_features = X_train.columns[selected_indices]
         return self.selected_features
 
     def _optimize_xgboost(self, trial, X, y):
