@@ -42,6 +42,7 @@ class Explainer:
         self.explanation = self.explainer(self.X)
         self.explanation.feature_names = X_cols
 
+        plt.close() # Ensure no previous data is pulled into plots
         # Plot example substructure importance
         if self.fingerprints == "morgan" or self.fingerprints == "accfg":
             print("...Analysing substructure importance...")
@@ -179,15 +180,15 @@ def save_shap_values_to_csv(explanation, X, feature_names, output_folder, finger
 
 def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerprints):
     """Create a waterfall plot for a given sample."""   
-    plt.clf()
+    plt.figure()
     if fingerprints == "accfg":
         ref_features = list(AccFgFingerprint().get_ref_features().keys())
         explanation_tmp = copy.deepcopy(explanation)
         accfg_feat_names = [ref_features[int(feat.split('-')[1])] for feat in explanation.feature_names]
         explanation_tmp.feature_names = accfg_feat_names
-        shap.plots.waterfall(explanation_tmp[idx], max_display=15, show=False)
+        shap.plots.waterfall(explanation_tmp[idx], max_display=12, show=False)
     else:
-        shap.plots.waterfall(explanation[idx], max_display=15, show=False)
+        shap.plots.waterfall(explanation[idx], max_display=12, show=False)
     plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight', dpi=300)
     plt.close()
     add_title_to_image(os.path.join(output_folder, file_name), f"Molecule: {smiles}")
@@ -195,12 +196,12 @@ def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerpri
 
 def plot_summary_plots(explanation, output_folder):
     """Create summary plots: bar plot and beeswarm plot.""" 
-    plt.clf()      
+    plt.figure()      
     shap.plots.bar(explanation, max_display=20, show=False)
     plt.savefig(os.path.join(output_folder, "interpretability_bar_plot.png"), bbox_inches='tight')
     plt.close()
 
-    plt.clf()
+    plt.figure()
     shap.plots.beeswarm(explanation, max_display=15, show=False)
     plt.savefig(os.path.join(output_folder, "interpretability_beeswarm_plot.png"), bbox_inches='tight')
     plt.close()
@@ -208,7 +209,7 @@ def plot_summary_plots(explanation, output_folder):
 
 def plot_scatter_plots(explanation, output_folder):
     """Create scatter plots for the top 5 features."""
-    plt.clf()
+    plt.figure()
     shap_values = explanation.values
     top_features = np.argsort(-np.abs(shap_values).mean(0))[:5]
 
@@ -220,7 +221,7 @@ def plot_scatter_plots(explanation, output_folder):
 
 def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprints):
     """Draw and save top features(bits)."""
-    plt.clf()
+    plt.figure()
     mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
     
     if fingerprints == "morgan":
