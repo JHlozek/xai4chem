@@ -4,16 +4,12 @@ import pandas as pd
 from xai4chem.supervised import Regressor, Classifier
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
-def infer(args):
-    # Load model and descriptor
-    model_path = os.path.join(args.model_dir, "model.pkl")
-    descriptor_path = os.path.join(args.model_dir, "descriptor.pkl")
-    descriptor = joblib.load(descriptor_path)
-    
+def explain_mols(args):
     # Determine model type
     temp_model = Regressor(args.output_dir)
-    temp_model.load_model(model_path)
+    temp_model.load_model(args.model_path)
     if hasattr(temp_model.model, 'predict_proba'):
         model = Classifier(args.output_dir)
         model_type = 'clf'
@@ -21,11 +17,12 @@ def infer(args):
         model = Regressor(args.output_dir)
         model_type = 'reg'
     
-    model.load_model(model_path)
+    model.load_model(args.model_path)
     
     # Load and transform data
     data = pd.read_csv(args.input_file)
     smiles = data["smiles"]
+    descriptor = model.descriptor
     features = descriptor.transform(smiles)
     
     # Make predictions and save results
@@ -63,5 +60,11 @@ def infer(args):
         plt.legend(title='Predicted Class', bbox_to_anchor=(1, 1))
         plt.savefig(os.path.join(args.output_dir, 'score_strip_plot.png'))
         plt.close()
-    
-    model.explain(features, smiles_list=smiles)
+        
+    if args.index_col is not None:
+        ids = data[args.index_col]
+        for i, smi in enumerate(tqdm(smiles)):
+            model.explain_mol_atoms(smi, file_prefix=ids[i])
+    else:
+        for smi in tqdm(smiles):
+            model.explain_mol_atoms(smi)

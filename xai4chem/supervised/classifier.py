@@ -6,13 +6,10 @@ import matplotlib.pyplot as plt
 import json
 import optuna
 import xgboost
-import lightgbm
-from catboost import CatBoostClassifier
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, mutual_info_classif
-from flaml.default import LGBMClassifier, XGBClassifier
-from featurewiz import FeatureWiz
+from xgboost import XGBClassifier
 from xai4chem.reporting import explain_model, classification_metrics
 
 
@@ -35,33 +32,11 @@ class Classifier:
             print(f"Number of input features is less than or equal to {self.max_features}. Using all features.")
             self.selected_features = list(X_train.columns)
         else:
-            print(f"Features in the dataset are more than {self.max_features}. Using Featurewiz for feature selection")
-            fwiz = FeatureWiz(corr_limit=0.9, feature_engg='', category_encoders='', dask_xgboost_flag=False,
-                              nrows=None, verbose=0)
-            X_train_fwiz, _ = fwiz.fit_transform(X_train, y_train)
-            selected_features = fwiz.features
-
-            if len(selected_features) >= self.max_features:
-                print(
-                    f"Selecting top {self.max_features}")
-                self.selected_features = selected_features[:self.max_features]
-            else:
-                print('Using Featurewiz, skipping SULO algorithm in feature selection')
-                fwiz = FeatureWiz(corr_limit=0.9, skip_sulov=True, feature_engg='', category_encoders='',
-                                  dask_xgboost_flag=False, nrows=None, verbose=0)
-                X_train_fwiz, _ = fwiz.fit_transform(X_train, y_train)
-                selected_features = fwiz.features
-                if len(selected_features) >= self.max_features:
-                    print(
-                        f"Selecting top {self.max_features}")
-                    self.selected_features = selected_features[:self.max_features]
-                else:
-                    print(
-                        f"Number of features selected by Featurewiz is less than {self.max_features}. Using KBest selection.")
-                    selector = SelectKBest(score_func=mutual_info_classif, k=self.max_features)
-                    selector.fit(X_train, y_train)
-                    selected_indices = np.argsort(selector.scores_)[::-1][:self.max_features]
-                    self.selected_features = X_train.columns[selected_indices]
+            print(f"Features in the dataset are more than {self.max_features}. Using KBest selection.")
+            selector = SelectKBest(score_func=mutual_info_classif, k=self.max_features)
+            selector.fit(X_train, y_train)
+            selected_indices = np.argsort(selector.scores_)[::-1][:self.max_features]
+            self.selected_features = X_train.columns[selected_indices]
         return self.selected_features
 
     def _optimize_xgboost(self, trial, X, y):
@@ -81,21 +56,6 @@ class Classifier:
         }
 
         model = XGBClassifier(**params)
-        return self._train_and_evaluate_optuna_model(model, X, y)
-
-    def _optimize_catboost(self, trial, X, y):
-        params = {
-            'iterations': trial.suggest_int("iterations", 500, 2000),
-            'learning_rate': trial.suggest_float('learning_rate', 0.0001, 1),
-            'reg_lambda': trial.suggest_float('reg_lambda', 1, 10),
-            'subsample': trial.suggest_categorical('subsample', [0.4, 0.5, 0.6, 0.7, 0.8, 1.0]),
-            'random_strength': trial.suggest_float('random_strength', 1, 10),
-            'depth': trial.suggest_int('depth', 5, 10),
-            'leaf_estimation_iterations': trial.suggest_int('leaf_estimation_iterations', 5, 10),
-            'early_stopping_rounds': 10
-        }
-
-        model = CatBoostClassifier(loss_function="Logloss", random_state=42, **params)
         return self._train_and_evaluate_optuna_model(model, X, y)
 
     def _train_and_evaluate_optuna_model(self, model, X, y):
@@ -129,29 +89,8 @@ class Classifier:
 
             self.model = xgboost.XGBClassifier(**hyperparams)
             self.model.fit(X_train, y_train)
-        elif self.algorithm == 'catboost':
-            if not default_params:
-                study = optuna.create_study(direction="maximize")
-                study.optimize(lambda trial: self._optimize_catboost(trial, X_train, y_train), n_trials=self.n_trials)
-                best_params = study.best_params
-                print('Best parameters for CatBoost:', best_params)
-                self.model = CatBoostClassifier(**best_params)
-            else:
-                self.model = CatBoostClassifier()
-            self.model.fit(X_train, y_train, verbose=False)
-        elif self.algorithm == 'lgbm':
-            estimator = LGBMClassifier()
-            (
-                hyperparams,
-                estimator_name,
-                X_transformed,
-                y_transformed,
-            ) = estimator.suggest_hyperparams(X_train, y_train)
-
-            self.model = lightgbm.LGBMClassifier(**hyperparams)
-            self.model.fit(X_train, y_train)
         else:
-            raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost, catboost")
+            raise ValueError("Invalid Algorithm. Supported Algorithms: xgboost")
 
     def evaluate(self, X_valid_features, smiles_valid, y_valid):
         if self.model is None:

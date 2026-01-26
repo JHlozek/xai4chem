@@ -21,6 +21,8 @@ setup(
     install_requires=install_requires,
     packages=find_packages(exclude=("utilities")),
     py_modules=['cmd'],
+    include_package_data=True,
+    package_data={"xai4chem": ["tools/accfg/*.csv"],},
     entry_points={'console_scripts': ['xai4chem = xai4chem.cli:cli',],
     },
     classifiers=[  

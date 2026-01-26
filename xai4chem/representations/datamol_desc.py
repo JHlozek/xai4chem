@@ -1,7 +1,6 @@
 import datamol as dm
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import joblib
 from sklearn.preprocessing import RobustScaler, KBinsDiscretizer
 from sklearn.feature_selection import VarianceThreshold
@@ -71,7 +70,7 @@ class VarianceFilter:
  
 def datamol_featurizer(smiles_list):
     R = []
-    for smiles in tqdm(smiles_list):
+    for smiles in smiles_list:
         mol = dm.to_mol(smiles)
         descriptors = dm.descriptors.compute_many_descriptors(mol)
         R.append(descriptors)
@@ -112,6 +111,7 @@ class DatamolDescriptor:
         col_idxs = self.variance_filter.col_idxs
         feature_names = list(df.columns)
         self.feature_names = [feature_names[i] for i in col_idxs]
+        return pd.DataFrame(X, columns=self.feature_names)
 
     def transform(self, smiles):
         df = datamol_featurizer(smiles)  
