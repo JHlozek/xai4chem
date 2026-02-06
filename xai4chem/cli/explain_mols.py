@@ -1,7 +1,7 @@
 import os
 import joblib
 import pandas as pd
-from xai4chem.supervised import Regressor, Classifier
+from xai4chem.supervised import Regressor
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
