@@ -87,9 +87,8 @@ class Regressor:
         self.model = xgboost.XGBRegressor(**best_params)
         self.model.fit(X_train.values, y_train)
 
-        y_pred = self.model_predict(X_train.values)
-        assert max(y_pred) - min(y_pred) > 0.05,
-            "Insufficicient variation between highest and lowest prediction scores."
+        y_pred = self.model.predict(X_train.values)
+        assert max(y_pred) - min(y_pred) > 0.05, "Insufficicient variation between highest and lowest prediction scores."
 
     def evaluate(self, X_valid_features, smiles_valid, y_valid):
         if self.model is None:
