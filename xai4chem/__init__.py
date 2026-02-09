@@ -1,3 +1,3 @@
-from .representations import DatamolDescriptor, MorganFingerprint, RDKitDescriptor, RDKitFingerprint, AccFgFingerprint
-from .supervised import Regressor, Classifier
+from .representations import DatamolDescriptor, MorganFingerprint, AccFgFingerprint
+from .supervised import Regressor
 from .reporting import Explainer

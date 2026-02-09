@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from xai4chem.representations import DatamolDescriptor, MorganFingerprint, AccFgFingerprint
-from xai4chem.supervised import Regressor, Classifier
+from xai4chem.supervised import Regressor
 
 def _get_descriptor(representation):
     '''

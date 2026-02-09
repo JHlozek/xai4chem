@@ -10,7 +10,6 @@ from rdkit import Chem
 from rdkit.Chem import AllChem, Draw, rdFingerprintGenerator
 from rdkit.Geometry import Point2D
 from rdkit.Chem.Draw import rdMolDraw2D, MolDraw2DCairo, MolsToGridImage
-from rdkit.Chem.Draw import IPythonConsole
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from matplotlib.colors import LinearSegmentedColormap
@@ -189,9 +188,9 @@ def plot_waterfall(explanation, idx, smiles, output_folder, file_name, fingerpri
         shap.plots.waterfall(explanation_tmp[idx], max_display=12, show=False)
     else:
         shap.plots.waterfall(explanation[idx], max_display=12, show=False)
-    plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight', dpi=300)
+    plt.title(f"Molecule: {smiles}", fontsize=14)
+    plt.savefig(os.path.join(output_folder, file_name), bbox_inches='tight', dpi=200)
     plt.close()
-    add_title_to_image(os.path.join(output_folder, file_name), f"Molecule: {smiles}")
 
 
 def plot_summary_plots(explanation, output_folder):
@@ -223,6 +222,7 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
     """Draw and save top features(bits)."""
     plt.figure()
     mol = Chem.MolFromSmiles(Chem.MolToSmiles(Chem.MolFromSmiles(smiles))) # canonical smiles
+    plt.title(f"Top 5 features ({fingerprints}-fps)", fontsize=14)
     
     if fingerprints == "morgan":
         list_bits = []
@@ -252,7 +252,6 @@ def draw_top_features(bit_info, valid_top_bits, smiles, output_path, fingerprint
                       legends=labels, 
                       returnPNG=False)
         img.save(output_path)
-    add_title_to_image(output_path, f"Top 5 features ({fingerprints}-fps)")
 
 
 def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
@@ -296,22 +295,13 @@ def highlight_and_draw_molecule(atoms_shapley_dict, smiles, output_path):
     drawer.drawOptions().useBWAtomPalette()
     drawer.DrawMolecule(mol, highlightAtoms=list(atom_colors.keys()), highlightAtomColors=atom_colors,
                         highlightBonds=list(bond_colors.keys()), highlightBondColors=bond_colors)
+    plt.title(f"Substructure importance", fontsize=14)
     drawer.FinishDrawing()
     drawer.WriteDrawingText(output_path)
-    add_title_to_image(output_path, f"Substructure importance")
 
 def custom_cmap():
     colors = [(0.0, "#008bfb"), (0.5, "#FFFFFF"), (1.0, "#ff0051")]
     custom_cmap = LinearSegmentedColormap.from_list("shap_white_center", colors)
     return custom_cmap
 
-# Add titles
-def add_title_to_image(image_path, title):
-    img = mpimg.imread(image_path)
-    plt.figure(figsize=(8, 8))
-    plt.imshow(img)
-    plt.title(title, fontsize=14)
-    plt.axis('off')  # Hide axis
-    plt.savefig(image_path, bbox_inches='tight')
-    plt.close()
     

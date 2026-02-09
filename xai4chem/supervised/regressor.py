@@ -13,7 +13,7 @@ from sklearn.feature_selection import SelectKBest, mutual_info_regression
 import sys
 
 sys.path.append('.')
-from xai4chem import MorganFingerprint, RDKitDescriptor, DatamolDescriptor, AccFgFingerprint
+from xai4chem import MorganFingerprint, DatamolDescriptor, AccFgFingerprint
 from xai4chem.reporting import Explainer
 from xai4chem.reporting import regression_metrics, shapley_raw_total_per_atom, highlight_and_draw_molecule, plot_waterfall, draw_top_features
 
